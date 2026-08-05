@@ -16,7 +16,7 @@ import numba
 import compass.descriptors.config as cfg
 import compass.descriptors.geometry as geom
 import compass.descriptors.main as mm
-import compass.descriptors.commprop_adjacency as commprop_adj
+import compass.descriptors.commprop_adjacency as cp_adj
 import compass.descriptors.topo_traj as tt
 import compass.network.generals as gn
 
@@ -90,7 +90,7 @@ def runner():
     )
 
     # ========= 4. COMPASS 2.0 adjacency: COMMPROP as sole edge weight =========
-    adj_mat = commprop_adj(matrices, arg.out_dir, arg.title, norm=True, prec=4)
+    adj_mat = cp_adj.commprop_adjacency(matrices, arg.out_dir, arg.title, norm=True, prec=4)
     adjacency_file = geom.get_matrix_name(arg.out_dir, arg.title, "ADJACENCY")
     matrix_name = "Adjacency matrix"
     geom.plot_matrix(adj_mat, matrix_name, adjacency_file.replace(".mat", ".png"))
