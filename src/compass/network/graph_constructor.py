@@ -2,8 +2,13 @@ import json
 
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 
 from compass.network import read_files as rf
+
+# Floor applied to the coupling before taking -log, so a zero coupling (the
+# min-max minimum) yields a large-but-finite distance instead of +inf.
+_COUPLING_FLOOR = 1e-6
 
 
 class GraphConstructor:
@@ -36,6 +41,21 @@ class GraphConstructor:
         """
         Builds a graph using distance and adjacency matrices with a specified distance cutoff.
 
+        An edge (i, j) is created when residues i and j are in spatial contact
+        (MINDIST < distance_cutoff) and their COMMPROP coupling is positive. Each
+        edge carries two attributes:
+
+            weight   = coupling A_ij in [0, 1]   (higher = stronger communication)
+            distance = -log(A_ij)                (lower  = stronger communication)
+
+        ``distance`` is the graph-theoretic cost used by all shortest-path and
+        centrality routines: because coupling behaves like a per-edge transmission
+        efficiency, the efficiency along a path is the product of its edge
+        couplings, and maximizing that product is equivalent to minimizing the sum
+        of -log(A_ij). Dijkstra on ``distance`` therefore returns the strongest
+        communication pathway. ``weight`` keeps the raw coupling for interpretation
+        (e.g. edge-weight histograms) and matches the saved ADJACENCY.mat.
+
         Args:
             distance_file (str): Path to the file containing the distance matrix.
             adjacency_file (str): Path to the file containing the adjacency matrix.
@@ -55,11 +75,13 @@ class GraphConstructor:
             G.add_node(i)
 
         # Add edges based on the distance and adjacency matrices
+        cutoff = float(distance_cutoff)
         for i in range(num_nodes):
             for j in range(i + 1, num_nodes):
-                if min_dist_matrix[i, j] < int(distance_cutoff) and \
-                        adjacency_matrix[i, j] > 0:
-                    G.add_edge(i, j, weight=adjacency_matrix[i, j])
+                coupling = adjacency_matrix[i, j]
+                if min_dist_matrix[i, j] < cutoff and coupling > 0:
+                    distance = -np.log(max(coupling, _COUPLING_FLOOR))
+                    G.add_edge(i, j, weight=coupling, distance=distance)
         return G
 
     def save_graph_and_mapping(self, G, atom_mapping, output_file):
@@ -97,8 +119,8 @@ class GraphConstructor:
 
         plt.figure(figsize=(10, 6))
         plt.hist(weights, bins=10, edgecolor='black', alpha=0.7)
-        plt.title('Histogram of Edge Weights')
-        plt.xlabel('Weight')
+        plt.title('Histogram of Edge Couplings (COMMPROP)')
+        plt.xlabel('Coupling')
         plt.ylabel('Frequency')
 
         histogram_file = f"{output_file_prefix}_histogram.png"
@@ -122,11 +144,18 @@ class GraphConstructor:
             largest_component = max(components, key=len)
             subgraphs = [G.subgraph(component) for component in components]
 
-            # Connect all components to the largest component
+            # Connect all components to the largest component. These are
+            # artificial bridge edges (no physical coupling): give them a
+            # near-zero coupling and a correspondingly large distance so
+            # shortest paths only traverse them when unavoidable.
+            bridge_distance = -np.log(_COUPLING_FLOOR)
             for component in components:
                 if component != largest_component:
-                    G.add_edges_from(
-                        [(list(largest_component)[0], list(component)[0])]
+                    G.add_edge(
+                        list(largest_component)[0],
+                        list(component)[0],
+                        weight=0.0,
+                        distance=bridge_distance,
                     )
         return G
 

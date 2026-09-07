@@ -36,7 +36,7 @@ class NetworkParameters:
 
     def compute_shortest_paths(self, all_paths_file, top_file):
         """
-        Compute shortest paths between nodes until reaching 20% of total residues.
+        Compute the shortest paths between nodes until reaching 20% of total residues.
 
         The method uses an optimized sequential approach that:
         1. Computes shortest paths between all node pairs
@@ -52,25 +52,21 @@ class NetworkParameters:
             dict: Dictionary of path lengths between node pairs
         """
         # print("Starting shortest path computations...")
-        nodes = sorted(
-            list(self.G.nodes()))  # Sort nodes for consistent results
+        nodes = sorted(list(self.G.nodes()))  # Sort nodes for consistent results
 
         # Compute all shortest paths
         shortest_paths, path_lengths = self._compute_all_shortest_paths(nodes)
 
         # Process paths and apply residue threshold
-        collected_paths = self._collect_paths_until_threshold(
-            nodes, shortest_paths, path_lengths
-        )
+        collected_paths = self._collect_paths_until_threshold(nodes, shortest_paths, path_lengths)
         # Save results to files
-        self._save_paths(all_paths_file, top_file, collected_paths,
-                         shortest_paths)
+        self._save_paths(all_paths_file, top_file, collected_paths, shortest_paths)
 
         return path_lengths
 
     def _compute_all_shortest_paths(self, nodes):
         """
-        Compute shortest paths between all node pairs efficiently.
+        Compute the shortest paths between all node pairs efficiently.
 
         Uses single_source_dijkstra to compute paths from each source node
         to all possible targets in one pass, improving performance.
@@ -89,7 +85,7 @@ class NetworkParameters:
             try:
                 # Compute all shortest paths from source in one call
                 distances, paths = nx.single_source_dijkstra(self.G, source,
-                                                             weight='weight')
+                                                             weight='distance')
                 # This avoids redundant path storage
                 for target in (n for n in nodes if n > source):
                     if target in paths:
@@ -99,12 +95,10 @@ class NetworkParameters:
                 continue
 
         end_time = time.time()
-        print(
-            f" 📐  Shortest paths computation completed in {end_time - start_time:.2f} seconds")
+        print(f" 📐  Shortest paths computation completed in {end_time - start_time:.2f} seconds")
         return shortest_paths, path_lengths
 
-    def _collect_paths_until_threshold(self, nodes, shortest_paths,
-                                       path_lengths):
+    def _collect_paths_until_threshold(self, nodes, shortest_paths, path_lengths):
         """
         Collect paths until reaching the residue threshold (20% of total residues).
 
@@ -180,8 +174,12 @@ class NetworkParameters:
         self.write_top_50_shortest_paths_with_mapping(collected_paths,
                                                       shortest_paths, top_file)
 
-    def write_top_50_shortest_paths_with_mapping(self, top_paths,
-                                                 shortest_paths, top_file):
+    def write_top_50_shortest_paths_with_mapping(
+            self,
+            top_paths,
+            shortest_paths,
+            top_file
+    ):
         """
         Write detailed path information including residue mapping.
 
@@ -240,14 +238,18 @@ class NetworkParameters:
             tuple: The shortest path length and the path as a list of nodes.
         """
         try:
-            length, path = nx.single_source_dijkstra(self.G, residue1,
-                                                     target=residue2)
+            length, path = nx.single_source_dijkstra(self.G, residue1, target=residue2, weight='distance')
             return length, path
         except nx.NetworkXNoPath:
             return float('inf'), []
 
-    def save_paths_and_create_heatmap(self, shortest_path_lengths,
-                                      heatmap_file, title, cbar_label):
+    def save_paths_and_create_heatmap(
+            self,
+            shortest_path_lengths,
+            heatmap_file,
+            title,
+            cbar_label
+    ):
         """
         Creates a heatmap of the shortest paths.
 
@@ -276,8 +278,15 @@ class NetworkParameters:
         vmax = np.max(data_matrix)
         # Plot the heatmap
         plt.figure(figsize=(10, 8))
-        sns.heatmap(data_matrix, annot=False, fmt=".2f", cmap="viridis",
-                    cbar_kws={'label': cbar_label}, vmin=vmin, vmax=vmax)
+        sns.heatmap(
+            data_matrix,
+            annot=False,
+            fmt=".2f",
+            cmap="viridis",
+            cbar_kws={'label': cbar_label},
+            vmin=vmin,
+            vmax=vmax
+        )
         # Set titles and labels
         plt.title(title)
         plt.xlabel("Node Index")
@@ -286,8 +295,7 @@ class NetworkParameters:
         plt.savefig(heatmap_file)
         plt.close()
         end_time = time.time()
-        print(
-            f"Heatmap created and saved in {end_time - start_time:.2f} seconds")
+        print(f"Heatmap created and saved in {end_time - start_time:.2f} seconds")
 
     def generate_paths_chunk(self, start_nodes, source_node, target_node):
         """
@@ -304,19 +312,22 @@ class NetworkParameters:
         chunk_paths = []
         for start_node in start_nodes:
             try:
-                paths = list(nx.all_simple_paths(
-                    self.G,
-                    source=int(source_node),
-                    target=int(target_node),
-                    cutoff=None
-                ))
+                paths = list(
+                    nx.all_simple_paths(self.G, source=int(source_node), target=int(target_node),
+                                        cutoff=None)
+                )
                 chunk_paths.extend(paths)
             except nx.NetworkXNoPath:
                 continue
         return chunk_paths
 
-    def find_alternative_paths(self, source_residue, target_residue,
-                               alt_paths_file, k=2):
+    def find_alternative_paths(
+            self,
+            source_residue,
+            target_residue,
+            alt_paths_file,
+            k=2
+    ):
         """
         Finds the top k alternative paths using Yen's algorithm.
 
@@ -353,7 +364,7 @@ class NetworkParameters:
 
             # Find the initial shortest path
             try:
-                path = nx.shortest_path(self.G, node1, node2, weight='weight')
+                path = nx.shortest_path(self.G, node1, node2, weight='distance')
                 A.append(path)
             except nx.NetworkXNoPath:
                 return []
@@ -381,8 +392,7 @@ class NetworkParameters:
 
                     try:
                         # Find new path from spur node to target
-                        spur_path = nx.shortest_path(self.G, spur_node, node2,
-                                                     weight='weight')
+                        spur_path = nx.shortest_path(self.G, spur_node, node2, weight='distance')
                         total_path = root_path[:-1] + spur_path
                         if total_path not in B:
                             heapq.heappush(B, total_path)
@@ -450,8 +460,8 @@ class NetworkParameters:
             tuple: A tuple containing dictionaries for betweenness, closeness, and degree centralities.
         """
         start_time = time.time()
-        betweenness = nx.betweenness_centrality(self.G, weight='weight')
-        closeness = nx.closeness_centrality(self.G, distance='weight')
+        betweenness = nx.betweenness_centrality(self.G, weight='distance')
+        closeness = nx.closeness_centrality(self.G, distance='distance')
         degree = dict(self.G.degree())
         end_time = time.time()
         return betweenness, closeness, degree
@@ -484,7 +494,7 @@ class NetworkParameters:
         """
         start_time = time.time()
         edge_betweenness = nx.edge_betweenness_centrality(self.G,
-                                                          weight='weight')
+                                                          weight='distance')
         end_time = time.time()
         return edge_betweenness
 

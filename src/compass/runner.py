@@ -90,7 +90,9 @@ def runner():
     )
 
     # ========= 4. COMPASS 2.0 adjacency: COMMPROP as sole edge weight =========
-    adj_mat = cp_adj.commprop_adjacency(matrices, arg.out_dir, arg.title, norm=True, prec=4)
+    # COMMPROP is already min-max normalized to [0, 1] in process_matrices, so we
+    # build the adjacency with norm=False to avoid normalizing it a second time.
+    adj_mat = cp_adj.commprop_adjacency(matrices, arg.out_dir, arg.title, norm=False, prec=4)
     adjacency_file = geom.get_matrix_name(arg.out_dir, arg.title, "ADJACENCY")
     matrix_name = "Adjacency matrix"
     geom.plot_matrix(adj_mat, matrix_name, adjacency_file.replace(".mat", ".png"))
