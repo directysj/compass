@@ -10,49 +10,6 @@ from numba import njit
 from numba.typed.typeddict import Dict
 from numba.core import types
 
-'''
-def remap_toppology(topo, mini_traj, out_dir):
-    """
-    Remap the topology of a system to start from residue 1 and chain 'A'
-
-    Outputs:
-        topo_pdb_name: the renumbered topology in pdb format
-        remap_name: the mapping between the original and renumbered residues
-        renum_pdb: the renumbered pdb file
-    """
-
-    # Save original topology as pdb
-    topo_basename = split(topo)[-1].split('.')[0]
-    topo_pdb_name = join(out_dir, topo_basename + '_orig.pdb')
-    mini_traj.save_pdb(topo_pdb_name)
-
-    # Original info
-    parsed = prd.parsePDB(topo_pdb_name)
-    nums = parsed.getResnums()
-    chains = parsed.getChids()
-    segs = [f'"{x}"' if x in {"", ''} else x for x in parsed.getSegnames()]
-    orig = sorted(set(zip(nums, chains, segs)), key=lambda x: int(x[0]))
-
-    # After-mapping info
-    new_nums = list(range(1, len(orig) + 1))
-    parsed.setChids('A')
-    new_chains = parsed.getChids()
-    new_segs = [f'"{x}"' if x in {"", ''} else x for x in parsed.getSegnames()]
-    renum = sorted(set(zip(new_nums, new_chains, new_segs)),
-                   key=lambda x: int(x[0]))
-
-    # Output the re-mapping
-    remap_name = join(out_dir, topo_basename + '_mapping.txt')
-    with open(remap_name, 'w') as f:
-        for o, r in zip(orig, renum):
-            line = f'{o[0]:>6} {o[1]:>2} {o[2]:>4}  {r[0]:>6} {r[1]:>2} {r[2]:>4}\n'
-            f.write(line)
-
-    # Output renumbered pdb
-    renum_pdb = topo_pdb_name.replace('_orig.pdb', '_renum.pdb')
-    prd.writePDB(renum_pdb, parsed)
-'''
-
 
 def prepare_datastructures(arg, first_timer):
     """
@@ -134,10 +91,42 @@ def get_xyz_chunks(trajs, topo, chunk_size=500):
             yield chunk.xyz
 
 
+# Nucleic-acid residue-name patterns (DNA / RNA, incl. 5'/3' terminal variants).
+_DNA_RESNAME = "(resname =~ '(5|3)?D([ATGC]){1}(3|5)?$')"
+_RNA_RESNAME = "(resname =~ '(3|5)?R?([AUGC]){1}(3|5)?$')"
+
+
+def _backbone_anchor_indices(trajectory):
+    """
+    Indices of the per-residue anchor atoms that define which residues COMPASS
+    treats as polymer: protein alpha-carbons (name CA) and nucleic C5' carbons.
+
+    A residue is analysed iff it owns one of these anchors, so waters, ions,
+    lipids, and ligands are excluded -- COMPASS runs on protein and nucleic-acid
+    atoms ONLY. The element guard (an anchor must be carbon) stops a non-polymer
+    atom that merely shares the name -- e.g. a calcium ion named 'CA' -- from
+    being mistaken for an alpha-carbon.
+
+    Args:
+        trajectory: trajectory loaded in mdtraj format
+
+    Returns:
+        Sorted numpy array of anchor atom indices (topology-wide, 0-based).
+    """
+    top = trajectory.topology
+    ca_atoms = top.select("name CA")
+    p_atoms = top.select(
+        f'({_DNA_RESNAME} or {_RNA_RESNAME}) and name "C5\'"')
+    raw = np.concatenate((ca_atoms, p_atoms)).astype(int)
+    anchors = [i for i in raw
+               if getattr(top.atom(int(i)).element, "symbol", None) == "C"]
+    return np.sort(np.asarray(anchors, dtype=int))
+
+
 def get_resids_indices(trajectory):
     """
-    Get indices of residues in the loaded trajectory, properly handling protein and nucleic acid residues
-    while excluding ions and other non-residue atoms.
+    Get indices of residues in the loaded trajectory, keeping ONLY protein and
+    nucleic-acid residues while excluding water, ions, lipids, and ligands.
 
     Args:
         trajectory: trajectory loaded in mdtraj format
@@ -150,34 +139,31 @@ def get_resids_indices(trajectory):
     # Parse the topological information
     df = trajectory.topology.to_dataframe()[0]
 
-    # Select CA as backbone atoms of the protein
-    ca_atoms = trajectory.topology.select("name CA")
+    # Per-residue anchor atoms (protein CA / nucleic C5'); residues without an
+    # anchor -- water, ions, lipids, ligands -- are dropped entirely.
+    anchor_atoms = _backbone_anchor_indices(trajectory)
+    anchor_set = set(int(i) for i in anchor_atoms)
 
-    # Select C5' as backbone atoms of the nucleic acids
-    dna = "(resname =~ '(5|3)?D([ATGC]){1}(3|5)?$')"
-    rna = "(resname =~ '(3|5)?R?([AUGC]){1}(3|5)?$')"
-    p_atoms = trajectory.topology.select(f'({dna} or {rna}) and name "C5\'"')
-    all_atoms = sorted(np.concatenate((ca_atoms, p_atoms)).astype(int))
-    res_names = [trajectory.topology.atom(i).residue.name for i in all_atoms]
-    unique_res_names = np.unique(res_names)
-    # print(unique_res_names)
+    # Group EVERY atom by residue key first, so groupby(...).indices yields the
+    # real (topology-wide) atom indices. Grouping a pre-filtered frame instead
+    # returns positions WITHIN the subset -- wrong atom indices as soon as the
+    # system contains any non-protein atoms.
+    group_all = df.groupby(["chainID", "resSeq", "segmentID"]).indices
 
-    # Create a mask for valid residues (proteins and nucleic acids)
-    valid_residues_mask = df['resName'].isin(unique_res_names)
-
-    # Filter the dataframe to include only valid residues
-    df_filtered = df[valid_residues_mask]
-    # print(df_filtered[:-10],"printing df in topo_traj")
-
-    # Group by chain, residue number, and segment for valid residues only
-    group_by_index = df_filtered.groupby(
-        ["chainID", "resSeq", "segmentID"]).indices
+    # Keep only residues that own an anchor atom (protein / nucleic).
+    group_by_index = {
+        key: idx for key, idx in group_all.items()
+        if anchor_set.intersection(idx.tolist())
+    }
+    if not group_by_index:
+        raise ValueError(
+            "No protein or nucleic-acid residues found in the topology; "
+            "nothing for COMPASS to analyse.")
 
     # Create non-hydrogen version
     group_by_index_noh = {}
-    for key in group_by_index:
-        values = group_by_index[key]
-        noh = values[df_filtered.loc[values, "element"] != "H"]
+    for key, values in group_by_index.items():
+        noh = values[df.loc[values, "element"] != "H"]
         group_by_index_noh[key] = noh
 
     # Create babel dictionaries
@@ -243,20 +229,14 @@ def get_corr_indices(trajectory, map_file):
         all_atoms: indices of all atoms to be considered for correlation
     """
 
-    # Select CA as backbone atoms of the protein
-    ca_atoms = trajectory.topology.select("name CA")
-
-    # Select C5' as backbone atoms of the nucleic acids
-    dna = "(resname =~ '(5|3)?D([ATGC]){1}(3|5)?$')"
-    rna = "(resname =~ '(3|5)?R?([AUGC]){1}(3|5)?$')"
-    p_atoms = trajectory.topology.select(f'({dna} or {rna}) and name "C5\'"')
-    # all_atoms = (np.concatenate((ca_atoms, p_atoms)))
-    all_atoms = sorted(np.concatenate((ca_atoms, p_atoms)).astype(int))
+    # Per-residue anchor atoms (protein CA / nucleic C5'), carbon-guarded and
+    # identical to the set used by get_resids_indices so counts stay in sync.
+    all_atoms = _backbone_anchor_indices(trajectory)
 
     # Write atom details to the specified map_file
     with open(map_file, 'w') as file:
         for idx in all_atoms:
-            atom = trajectory.topology.atom(idx)
+            atom = trajectory.topology.atom(int(idx))
 
             # Writing atom details to file
             file.write(f"Atom Index: {idx}, Atom Name: {atom.name}, "
@@ -277,14 +257,9 @@ def get_calpha_p_indices(trajectory, atoms_to_resids, map_file, numba=True):
     Returns:
         alphas: indices of C-alpha atoms
     """
-    # Select CA as backbone atoms of the protein
-    ca_atoms = trajectory.topology.select("name CA")
-
-    # Select C5' as backbone atoms of the nucleic acids
-    dna = "(resname =~ '(5|3)?D([ATGC]){1}(3|5)?$')"
-    rna = "(resname =~ '(3|5)?R?([AUGC]){1}(3|5)?$')"
-    p_atoms = trajectory.topology.select(f'({dna} or {rna}) and name "C5\'"')
-    all_atoms = (np.concatenate((ca_atoms, p_atoms)).astype(int))
+    # Per-residue anchor atoms (protein CA / nucleic C5'), carbon-guarded and
+    # identical to the set used by get_resids_indices / get_corr_indices.
+    all_atoms = _backbone_anchor_indices(trajectory)
     n_resids = len(all_atoms)
     calphas_p_raw = get_corr_indices(trajectory, map_file)
     # print(np.shape(calphas_p_raw),n_resids)
@@ -320,9 +295,12 @@ def get_sb_indices(topo_df, atoms_to_resids):
     sel_N1 = topo_df.resName.isin(["ARG", "HIS", "LYS", "HSP"])
     sel_N2 = topo_df.element == "N"
 
-    # Get indices of selected atoms
-    o_indices = np.array(topo_df[sel_O1 & sel_O2].index)
-    n_indices = np.array(topo_df[sel_N1 & sel_N2].index)
+    # Get indices of selected atoms, restricted to tracked (protein/nucleic)
+    # residues so a non-polymer residue sharing one of these names cannot leak
+    # in and raise a KeyError on the lookups below.
+    valid_atoms = set(atoms_to_resids.keys())
+    o_indices = [x for x in topo_df[sel_O1 & sel_O2].index if x in valid_atoms]
+    n_indices = [x for x in topo_df[sel_N1 & sel_N2].index if x in valid_atoms]
 
     # Process the oxygen indices to a numba dict
     oxy_raw1 = defaultdict(list)
@@ -358,6 +336,15 @@ def get_dha_indices(trajectory, heavies_elements, atoms_to_resids):
     all_hydrogens = set(df[df.element == "H"].index)
 
     a_raw1 = set(np.where(df.element.isin(heavies_elements))[0])
+
+    # Keep only heavy atoms that belong to tracked residues (proteins and
+    # nucleic acids). Solvated / membrane systems (e.g. GPCRMD) contain waters,
+    # lipids, ions, and ligands whose N/O/S atoms are NOT in atoms_to_resids;
+    # looking them up below raised a bare numba KeyError. Restricting the heavy
+    # set here also filters the donors and hydrogens, since both are derived
+    # from bonds to these atoms and a bonded H shares the heavy atom's residue.
+    valid_atoms = set(atoms_to_resids.keys())
+    a_raw1 &= valid_atoms
 
     # Find D-H indices
     h_raw1 = []
