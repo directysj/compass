@@ -25,7 +25,8 @@ def process_graphs(param_space, distance_cutoffs):
     graph_constructor = GraphConstructor(
         distance_file=param_space.min_dist_matrix_file,
         adjacency_file=param_space.adjacency_file,
-        distance_cutoffs=distance_cutoffs
+        distance_cutoffs=distance_cutoffs,
+        weight_mode=getattr(param_space, 'edge_weight', 'adjacency')
     )
     # Prefer the canonical mapping written by the descriptor stage (aligned with
     # the matrix/residue order). Fall back to deriving it from the PDB (atom

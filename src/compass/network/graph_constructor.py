@@ -2,6 +2,7 @@ import json
 
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 
 from compass.network import read_files as rf
 
@@ -17,7 +18,8 @@ class GraphConstructor:
         reader (ReadFiles): Instance of ReadFiles class for reading matrices.
     """
 
-    def __init__(self, distance_file, adjacency_file, distance_cutoffs):
+    def __init__(self, distance_file, adjacency_file, distance_cutoffs,
+                 weight_mode="adjacency"):
         """
         Initializes the GraphConstructor with file paths and distance cutoffs.
 
@@ -25,11 +27,31 @@ class GraphConstructor:
             distance_file (str): Path to the distance matrix file.
             adjacency_file (str): Path to the adjacency matrix file.
             distance_cutoffs (list): List of distance cutoffs for graph generation.
+            weight_mode (str): How the adjacency similarity is turned into the
+                edge 'weight' used as a DISTANCE downstream. One of
+                'adjacency' (original: weight = adjacency), 'inverse'
+                (weight = 1/adjacency) or 'neglog' (weight = -log(adjacency)).
         """
         self.distance_file = distance_file
         self.adjacency_file = adjacency_file
         self.distance_cutoffs = distance_cutoffs
+        self.weight_mode = weight_mode
         self.reader = rf.ReadFiles()  # Create an instance of ReadFiles
+
+    def _edge_cost(self, adjacency):
+        """
+        Convert an adjacency similarity (in [0,1], higher = stronger coupling)
+        into the edge weight consumed as a DISTANCE by the shortest-path /
+        centrality algorithms. Only called for edges with adjacency > 0.
+        """
+        adjacency = float(adjacency)
+        if self.weight_mode == "adjacency":
+            return adjacency
+        if self.weight_mode == "inverse":
+            return 1.0 / adjacency
+        if self.weight_mode == "neglog":
+            return float(-np.log(adjacency))
+        raise ValueError(f"Unknown weight_mode: {self.weight_mode}")
 
     def build_graph_from_matrices(self, distance_file, adjacency_file,
                                   distance_cutoff, atom_mapping):
@@ -54,12 +76,16 @@ class GraphConstructor:
         for i in range(num_nodes):
             G.add_node(i)
 
-        # Add edges based on the distance and adjacency matrices
+        # Add edges based on the distance and adjacency matrices. The edge set is
+        # identical across weight modes (gated by adjacency > 0); only the
+        # 'weight' (distance) differs. The raw similarity is kept as 'adjacency'
+        # so it can be inspected or re-transformed later.
         for i in range(num_nodes):
             for j in range(i + 1, num_nodes):
                 if min_dist_matrix[i, j] < float(distance_cutoff) and \
                         adjacency_matrix[i, j] > 0:
-                    G.add_edge(i, j, weight=adjacency_matrix[i, j])
+                    adj = float(adjacency_matrix[i, j])
+                    G.add_edge(i, j, weight=self._edge_cost(adj), adjacency=adj)
         return G
 
     def save_graph_and_mapping(self, G, atom_mapping, output_file):

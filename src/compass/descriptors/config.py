@@ -17,6 +17,21 @@ allowed_params = {
 
 allowed_heavies = {"S", "N", "O"}
 
+# Optional keys per section: accepted if present, defaulted if absent. Kept
+# separate from allowed_params so existing config files (without them) still
+# validate.
+optional_params = {
+    "distance cutoffs": {"edge_weight"},
+}
+
+# How the PCA adjacency (a similarity in [0,1], higher = stronger coupling) is
+# turned into the edge 'weight' consumed as a DISTANCE by the shortest-path /
+# centrality algorithms.
+#   adjacency : weight = adjacency            (original behaviour; default)
+#   inverse   : weight = 1 / adjacency        (strong coupling -> short path)
+#   neglog    : weight = -log(adjacency)      (strong coupling -> short path)
+allowed_edge_weights = {"adjacency", "inverse", "neglog"}
+
 
 def read_config_file(config_path):
     """
@@ -59,17 +74,21 @@ def check_config(config_obj):
             f" sections. Only the following are supported: {allowed_sections}"
         )
 
-    # Check keys
+    # Check keys: all required keys must be present, and no unknown keys are
+    # allowed beyond the required + optional sets for that section.
     config_dict = {}
     for section in allowed_params:
-        allowed_keys = allowed_params[section]
-        read_keys = config_obj[section]
-        same_keys = set(read_keys) == allowed_keys
-        if not same_keys:
+        required_keys = allowed_params[section]
+        optional_keys = optional_params.get(section, set())
+        read_keys = set(config_obj[section])
+        missing = required_keys - read_keys
+        unknown = read_keys - required_keys - optional_keys
+        if missing or unknown:
             raise ValueError(
-                f"\nIncongruence in the number or naming of"
-                f" declared keys. Only the following are "
-                f"supported for section [{section}]: {allowed_keys}"
+                f"\nIncongruence in the keys declared for section "
+                f"[{section}]. Required: {sorted(required_keys)}. "
+                f"Optional: {sorted(optional_keys)}. "
+                f"Missing: {sorted(missing)}. Unknown: {sorted(unknown)}."
             )
 
         # Update config
@@ -115,6 +134,16 @@ def parse_params(config_path):
     # Distance cutoffs
     param_space.dist_graph = float(param_dict["distance cutoffs"]["Graph"])
     param_space.dist_clique = float(param_dict["distance cutoffs"]["Cliques"])
+
+    # Edge-weight transform for the network (optional; defaults to original)
+    edge_weight = param_dict["distance cutoffs"].get(
+        "edge_weight", "adjacency").strip().lower()
+    if edge_weight not in allowed_edge_weights:
+        raise ValueError(
+            f"edge_weight must be one of {sorted(allowed_edge_weights)}, "
+            f"got '{edge_weight}'."
+        )
+    param_space.edge_weight = edge_weight
 
     # alternative paths between residues
     param_space.find_path = str(param_dict["paths"]["find_path"])
