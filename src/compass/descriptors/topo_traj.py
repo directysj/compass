@@ -1,5 +1,6 @@
 # Created by gonzalezroy at 6/6/24
 """Manage common operations as well as those related to topo and traj files"""
+import json
 import time
 from collections import defaultdict
 from os.path import basename, join
@@ -46,31 +47,29 @@ def prepare_datastructures(arg, first_timer):
     # remap_toppology(arg.topo, mini_traj, arg.out_dir)
 
     # Indices of residues in the load trajectory and equivalence
-    resids_to_atoms, resids_to_noh, internal_equiv = \
-        get_resids_indices(mini_traj)
+    resids_to_atoms, resids_to_noh, internal_equiv = get_resids_indices(mini_traj)
     # print(resids_to_atoms, "resids_to_atoms in topo_traj")
     raw = {y: x for x in resids_to_atoms for y in resids_to_atoms[x]}
     atoms_to_resids = pydict_to_numbadict(raw)
 
     # Atom selections indices for descriptors calculation
-    calphas = get_calpha_p_indices(mini_traj, atoms_to_resids,
-                                   map_file=map_file)
+    calphas = get_calpha_p_indices(mini_traj, atoms_to_resids, map_file=map_file)
     oxy, nitro = get_sb_indices(full_topo, atoms_to_resids)
-    donors, hydros, acceptors = \
-        get_dha_indices(mini_traj, arg.heavies, atoms_to_resids)
-    corr_indices_raw = get_calpha_p_indices(mini_traj, atoms_to_resids,
-                                            map_file=map_file,
-                                            numba=False).keys()
-    corr_indices = list(corr_indices_raw)
+    donors, hydros, acceptors = get_dha_indices(mini_traj, arg.heavies, atoms_to_resids)
+    # Correlation atoms = the CA / C5' ATOM index of each residue, ordered by
+    # residue index r so the MI/GC rows line up with every other matrix (which
+    # are all indexed in resids_to_atoms order). Taken from calphas, which is now
+    # keyed by residue index. The old code used calphas.keys() (0..n-1), slicing
+    # the first n atoms instead of the CA atoms.
+    corr_indices = [int(calphas[r]) for r in range(len(calphas))]
 
     prep_time = round(time.time() - first_timer, 2)
     print(f" 📋 System details: number of trajectories are {len(trajs)}")
     print(f" 📋 System details: number of residues are {len(calphas)}")
     print(f" ⏱️  Until datastructures prepared: {prep_time} s")
 
-    return (
-        mini_traj, trajs, resids_to_atoms, resids_to_noh, calphas, oxy, nitro,
-        donors, hydros, acceptors, corr_indices)
+    return (mini_traj, trajs, resids_to_atoms, resids_to_noh, calphas, oxy, nitro,
+            donors, hydros, acceptors, corr_indices)
 
 
 def get_xyz_chunks(trajs, topo, chunk_size=500):
@@ -263,7 +262,17 @@ def get_calpha_p_indices(trajectory, atoms_to_resids, map_file, numba=True):
     n_resids = len(all_atoms)
     calphas_p_raw = get_corr_indices(trajectory, map_file)
     # print(np.shape(calphas_p_raw),n_resids)
-    calphas_p = {i: atoms_to_resids[calphas_p_raw[i]] for i in range(n_resids)}
+    # calphas[r] = the CA/C5' ATOM index of residue r, where r is the residue
+    # index used by resids_to_atoms / resids_to_noh (groupby order). We key each
+    # anchor by atoms_to_resids[anchor] instead of by its position in the sorted
+    # anchor list, so this stays aligned with resids_to_noh even if atom order
+    # and residue-enumeration order differ (non-monotonic resSeq, insertion
+    # codes, string-sorted chain IDs). The value is the atom index because it is
+    # indexed straight into frame_coords downstream; the previous code stored the
+    # residue index r itself, so frame_coords[r] read the wrong atom.
+    calphas_p = {}
+    for a in calphas_p_raw:
+        calphas_p[int(atoms_to_resids[int(a)])] = int(a)
 
     if len(calphas_p) != n_resids:
         raise ValueError("\nThe number of calphas + P atoms is different from"
@@ -274,6 +283,39 @@ def get_calpha_p_indices(trajectory, atoms_to_resids, map_file, numba=True):
     else:
         alphas = calphas_p
     return alphas
+
+
+def save_atom_mapping(trajectory, calphas, out_path):
+    """
+    Write the canonical node -> residue mapping used by the network stage.
+
+    Keyed by residue index r (0..n-1) in the SAME order as every descriptor
+    matrix (resids_to_atoms / groupby order), because it is built from `calphas`
+    (residue index -> CA/C5' atom index). This replaces re-deriving the mapping
+    from the PDB in atom-index order, which could misalign labels with the matrix
+    indices when atom order != residue-enumeration order. Values match
+    ReadFiles.atom_mapping: [residue_name, atom_name, resSeq, chain_id].
+
+    Args:
+        trajectory: MDTraj trajectory whose topology owns the calpha atoms
+        calphas: dict {residue_index: CA/C5' atom index} (numba or plain)
+        out_path: JSON file to write
+
+    Returns:
+        mapping: the dict written (str keys, list values), for convenience
+    """
+    top = trajectory.topology
+    mapping = {}
+    for r in range(len(calphas)):
+        atom = top.atom(int(calphas[r]))
+        residue = atom.residue
+        chain_id = residue.chain.chain_id \
+            if residue.chain.chain_id is not None else ''
+        mapping[str(r)] = [residue.name, atom.name, int(residue.resSeq),
+                           chain_id]
+    with open(out_path, 'w') as f:
+        json.dump(mapping, f)
+    return mapping
 
 
 def get_sb_indices(topo_df, atoms_to_resids):
@@ -499,10 +541,11 @@ class Mapping:
         map_file = join(self.out_dir, basename(map_file_raw))
 
         # Open input PDB file for reading, renumbered PDB file and map file for writing
-        with open(input_pdb, "r") as infile, open(renumbered_pdb,
-                                                  "w") as outfile, open(
-            map_file, "w"
-        ) as mapfile:
+        with (
+            open(input_pdb, "r") as infile,
+            open(renumbered_pdb, "w") as outfile,
+            open(map_file, "w") as mapfile
+        ):
             # Initialize variables for residue renumbering and mapping
             current_residue_number = 0
             residue_map = {}

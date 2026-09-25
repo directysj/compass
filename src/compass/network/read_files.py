@@ -92,6 +92,22 @@ class ReadFiles:
             residues.append((chain_id, res_num, atom_name))
         return residues
 
+    def load_atom_mapping(self, file_path):
+        """
+        Load the canonical node -> residue mapping written by the descriptor
+        stage (topo_traj.save_atom_mapping). Keys are node-index strings and
+        values are [residue_name, atom_name, resSeq, chain_id], matching the
+        format produced by atom_mapping() after a JSON round-trip.
+
+        Args:
+            file_path (str): Path to the atom_mapping JSON file.
+
+        Returns:
+            dict: node-index (str) -> [residue_name, atom_name, resSeq, chain_id]
+        """
+        with open(file_path, 'r') as f:
+            return json.load(f)
+
     def load_graph_and_mapping(self, input_file):
         """
         Loads the graph and atom mapping from a JSON file.

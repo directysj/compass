@@ -107,6 +107,12 @@ def runner():
     dist_cutoffs = [dict_arg["distance cutoffs"]["Graph"],
                     dict_arg["distance cutoffs"]["Cliques"]]
 
+    # Canonical node -> residue mapping in the SAME residue order as every
+    # matrix (built from calphas), so network node labels line up with the
+    # graph/matrix indices regardless of atom vs residue ordering.
+    arg.atom_mapping_file = join(arg.network_dir, 'atom_mapping.json')
+    tt.save_atom_mapping(mini_traj, calphas, arg.atom_mapping_file)
+
     # Create a PDB for the network visualization
     _, filename = os.path.split(arg.topo)
     pdb_name = join(arg.output_dir, f'{filename.split(".")[0]}_internal.pdb')

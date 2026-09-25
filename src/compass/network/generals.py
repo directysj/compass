@@ -27,8 +27,15 @@ def process_graphs(param_space, distance_cutoffs):
         adjacency_file=param_space.adjacency_file,
         distance_cutoffs=distance_cutoffs
     )
-    atom_mapping, _ = graph_constructor.reader.atom_mapping(
-        param_space.pdb_file_path)
+    # Prefer the canonical mapping written by the descriptor stage (aligned with
+    # the matrix/residue order). Fall back to deriving it from the PDB (atom
+    # order) only if that file is unavailable.
+    atom_mapping_file = getattr(param_space, 'atom_mapping_file', None)
+    if atom_mapping_file and os.path.exists(atom_mapping_file):
+        atom_mapping = ReadFiles().load_atom_mapping(atom_mapping_file)
+    else:
+        atom_mapping, _ = graph_constructor.reader.atom_mapping(
+            param_space.pdb_file_path)
 
     # Iterate over each distance cutoff to build and process the graph
     for distance_cutoff in graph_constructor.distance_cutoffs:
@@ -67,8 +74,7 @@ def process_graph_files(results_dir, dist_cutoff_graph):
     """
     # List all .json files in the results directory
     for filename in os.listdir(results_dir):
-        if filename.endswith('.json') and filename.startswith(
-                'graph_cutoff_' + dist_cutoff_graph):
+        if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
             # Construct the full path to the JSON file
             json_path = os.path.join(results_dir, filename)
             # Load the graph and atom mapping
@@ -111,8 +117,7 @@ def process_graph_files(results_dir, dist_cutoff_graph):
 def find_paths(pdb_file, results_dir, dist_cutoff_graph, source_res,
                target_res):
     for filename in os.listdir(results_dir):
-        if filename.endswith('.json') and filename.startswith(
-                'graph_cutoff_' + dist_cutoff_graph):
+        if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
             # Construct the full path to the JSON file
             json_path = os.path.join(results_dir, filename)
             # Load the graph and atom mapping
@@ -151,8 +156,7 @@ def process_graph_files_for_communities_and_cliques(results_dir,
 
     # List all .json files in the results directory
     for filename in os.listdir(results_dir):
-        if filename.endswith('.json') and filename.startswith(
-                'graph_cutoff_' + dist_cutoff_graph):
+        if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
             # Construct the full path to the JSON file
             json_path = os.path.join(results_dir, filename)
             graph, atom_mapping = ReadFiles().load_graph_and_mapping(json_path)
@@ -172,8 +176,7 @@ def process_graph_files_for_communities_and_cliques(results_dir,
                 f" 🧩  Communities detected using Leiden algorithm saved to {communities_file}")
 
     for filename in os.listdir(results_dir):
-        if filename.endswith('.json') and filename.startswith(
-                'graph_cutoff_' + dist_cutoff_clique):
+        if filename == f'graph_cutoff_{dist_cutoff_clique}.json':
             # Construct the full path to the JSON file
             json_path = os.path.join(results_dir, filename)
             graph, atom_mapping = ReadFiles().load_graph_and_mapping(json_path)
@@ -197,8 +200,7 @@ def generate_pymol_scripts(results_dir, pdb_file, dist_cutoff_graph,
         results_dir (str): Directory containing result files and JSON graph files.
     """
     for filename in os.listdir(results_dir):
-        if filename.endswith('.json') and filename.startswith(
-                'graph_cutoff_' + dist_cutoff_graph):
+        if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
             json_path = os.path.join(results_dir, filename)
             prefix = filename.replace('.json', '')
             # Load the graph and atom mapping
@@ -258,8 +260,7 @@ def generate_pymol_scripts(results_dir, pdb_file, dist_cutoff_graph,
                                                                output_top_paths)
 
     for filename in os.listdir(results_dir):
-        if filename.endswith('.json') and filename.startswith(
-                'graph_cutoff_' + dist_cutoff_clique):
+        if filename == f'graph_cutoff_{dist_cutoff_clique}.json':
             json_path = os.path.join(results_dir, filename)
             prefix = filename.replace('.json', '')
             cliques_file = os.path.join(results_dir, f"{prefix}_cliques.txt")

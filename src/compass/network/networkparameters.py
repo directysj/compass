@@ -1,4 +1,5 @@
 import heapq
+import itertools
 import time
 
 import matplotlib.pyplot as plt
@@ -315,6 +316,11 @@ class NetworkParameters:
                 continue
         return chunk_paths
 
+    def _path_cost(self, path):
+        """Sum of edge weights along a node path (missing weights count as 1)."""
+        return sum(self.G[u][v].get('weight', 1)
+                   for u, v in zip(path[:-1], path[1:]))
+
     def find_alternative_paths(self, source_residue, target_residue,
                                alt_paths_file, k=2):
         """
@@ -338,18 +344,27 @@ class NetworkParameters:
             # print (key, values)
             if values[-2] == int(source_res_num) and values[
                 -1] == source_chain_id:
-                node1 = key
+                node1 = int(key)
             if values[-2] == int(target_res_num) and values[
                 -1] == target_chain_id:
-                node2 = key
+                node2 = int(key)
             if node1 is not None and node2 is not None:
                 break
-        node1, node2 = int(source_res_num), int(target_res_num)
+        # NOTE: node1/node2 are GRAPH NODE INDICES (atom_mapping keys), not the
+        # residue numbers. The previous line here overwrote them with
+        # int(source_res_num)/int(target_res_num), i.e. it used residue numbers
+        # as node indices -- only correct when resnum == node index.
+        if node1 is None or node2 is None:
+            raise ValueError(
+                f"Could not map residues {source_residue} / {target_residue} "
+                f"to graph nodes via atom_mapping")
 
         def find_yen_k_paths():
             """Implementation of Yen's k shortest paths algorithm."""
-            A = []  # List of found paths
-            B = []  # Candidate paths heap
+            A = []  # List of found paths (accepted, in increasing cost order)
+            B = []  # Candidate heap of (cost, tie_breaker, path)
+            seen = set()  # candidate paths already pushed
+            counter = itertools.count()  # tie-breaker so paths are never compared
 
             # Find the initial shortest path
             try:
@@ -384,8 +399,14 @@ class NetworkParameters:
                         spur_path = nx.shortest_path(self.G, spur_node, node2,
                                                      weight='weight')
                         total_path = root_path[:-1] + spur_path
-                        if total_path not in B:
-                            heapq.heappush(B, total_path)
+                        key = tuple(total_path)
+                        # Order candidates by PATH COST, not by node-index order.
+                        # (Pushing bare path lists made heappop return the
+                        #  lexicographically-smallest path, not the shortest.)
+                        if key not in seen and total_path not in A:
+                            seen.add(key)
+                            cost = self._path_cost(total_path)
+                            heapq.heappush(B, (cost, next(counter), total_path))
                     except nx.NetworkXNoPath:
                         pass
 
@@ -396,8 +417,8 @@ class NetworkParameters:
                 if not B:
                     break
 
-                # Add the best candidate to solution
-                new_path = heapq.heappop(B)
+                # Add the lowest-cost candidate to the solution
+                _, _, new_path = heapq.heappop(B)
                 A.append(new_path)
 
             return A

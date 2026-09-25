@@ -57,7 +57,7 @@ class GraphConstructor:
         # Add edges based on the distance and adjacency matrices
         for i in range(num_nodes):
             for j in range(i + 1, num_nodes):
-                if min_dist_matrix[i, j] < int(distance_cutoff) and \
+                if min_dist_matrix[i, j] < float(distance_cutoff) and \
                         adjacency_matrix[i, j] > 0:
                     G.add_edge(i, j, weight=adjacency_matrix[i, j])
         return G

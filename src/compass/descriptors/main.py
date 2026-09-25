@@ -237,22 +237,22 @@ def get_chunk_info(
 
 
 @njit(parallel=True)
-def get_chunk_cp(traj_coords, resids_to_atoms, pair_cp_sum, calphas):
+def get_chunk_cp(traj_coords, resids_to_atoms, ave_pair_cp, calphas):
     """
-    Get the minimum distance between every pair of residues averaged along
-    the trajectory
+    Accumulate, for one chunk, the squared deviation of each residue pair's
+    C-alpha distance from its trajectory-wide mean (second pass of the CP /
+    communication-propensity variance).
 
     Args:
-        traj_coords: xyz coordinates of the trajectory
+        traj_coords: xyz coordinates of the chunk
         resids_to_atoms: dict mapping residues indices to the atoms indices
+        ave_pair_cp: pairwise MEAN C-alpha distance over the FULL trajectory
+                     (already divided by the total number of frames)
         calphas: dict mapping residues indices to their calpha atoms indices
-        pair_cp_sum: pairwise sum of the distances between calpha atoms
 
     Returns:
-        ave_pair_min_dist: average along the trajectory of the minimum distance
-                           between every pair of residues
-        percent_nb: percent of non-bonded contacts occupancy between every
-                         pair of residues
+        cp_values: per-pair sum over this chunk's frames of
+                   (d_ij - mean_ij)**2
     """
     # Constants
     n_resids = len(resids_to_atoms)
@@ -260,8 +260,10 @@ def get_chunk_cp(traj_coords, resids_to_atoms, pair_cp_sum, calphas):
     n_frames = len(traj_coords)
     # print(n_resids, n_pairs, n_frames, "get_chunk_cp in main")
 
-    # Get the cp in a second pass to avoid RAM issues
-    ave_pair_cp = pair_cp_sum / n_frames
+    # NOTE: ave_pair_cp is ALREADY the full-trajectory mean; do not divide again.
+    # (The previous code recomputed ave_pair_cp = pair_cp_sum / n_frames here,
+    #  dividing the mean by the chunk frame count -> the subtracted mean was
+    #  ~n_frames too small and CP degenerated to sum(d_ij**2).)
     cp_values = np.zeros(n_pairs)
     for frame in prange(n_frames):
         k = 0
