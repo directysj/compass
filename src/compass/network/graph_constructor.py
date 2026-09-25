@@ -40,9 +40,10 @@ class GraphConstructor:
 
     def _edge_cost(self, adjacency):
         """
-        Convert an adjacency similarity (in [0,1], higher = stronger coupling)
-        into the edge weight consumed as a DISTANCE by the shortest-path /
-        centrality algorithms. Only called for edges with adjacency > 0.
+        Convert an adjacency similarity (in [0,1], higher = residues more similar
+        in PCA profile space) into the edge weight consumed as a DISTANCE by the
+        shortest-path / centrality algorithms. Only called for edges with
+        adjacency > 0. See docs/network_edge_weights.md for the full rationale.
         """
         adjacency = float(adjacency)
         if self.weight_mode == "adjacency":

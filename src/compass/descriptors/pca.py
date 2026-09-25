@@ -150,6 +150,10 @@ def run_pca(arg, matrices, n, first_timer):
     del data
     adj_mat_raw = calc_adjacency_matrix(pca_result)
     adj_mat = adj_mat_raw.toarray()
+    # Flip PCA-space distance into a similarity: high adjacency = residues close
+    # in PCA profile space. This defines the similarity; the edge-weight *mode*
+    # (graph_constructor) decides how it becomes a path cost.
+    # See docs/network_edge_weights.md.
     adj_mat = 1 - adj_mat
     del adj_mat_raw
     adj_name = geom.get_matrix_name(arg.out_dir, arg.title, "ADJACENCY")
