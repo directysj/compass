@@ -23,7 +23,8 @@ class NetworkParameters:
                            residue number, atom name).
     """
 
-    def __init__(self, G, atom_mapping=None):
+    def __init__(self, G, atom_mapping=None, top_percent=5.0,
+                 path_coverage_percent=20.0):
         """
         Initialize the NetworkParameters class.
 
@@ -31,9 +32,15 @@ class NetworkParameters:
             G (nx.Graph): Network graph with weighted edges.
             atom_mapping (dict, optional): Dictionary mapping node indices to atom information.
                 Expected format: {node_id: (chain, residue_name, residue_number, atom_name)}
+            top_percent (float): Percentage of residues (per protein) reported as
+                top allosteric-hotspot nodes. Default 5.
+            path_coverage_percent (float): Collect top shortest paths until this
+                percentage of residues (per protein) is covered. Default 20.
         """
         self.G = G
         self.atom_mapping = atom_mapping if atom_mapping else {}
+        self.top_percent = top_percent
+        self.path_coverage_percent = path_coverage_percent
 
     def compute_shortest_paths(self, all_paths_file, top_file):
         """
@@ -118,7 +125,7 @@ class NetworkParameters:
             list: Collected paths that meet the threshold criterion
         """
         total_residues = len(nodes)
-        residue_threshold = 0.2 * total_residues
+        residue_threshold = (self.path_coverage_percent / 100.0) * total_residues
 
         # Create and sort path list by length (descending)
         path_list = [
@@ -192,7 +199,8 @@ class NetworkParameters:
             top_file (str): Output file path
         """
         with open(top_file, 'w') as file:
-            file.write("Top 50 Shortest Paths:\n")
+            file.write(f"Top Shortest Paths (collected until {self.path_coverage_percent:g}% "
+                       f"residue coverage):\n")
             unique_top_paths = set()
 
             for source, target, length in top_paths:
@@ -227,7 +235,7 @@ class NetworkParameters:
                             f"Error processing path {source} -> {target}: {str(e)}")
 
         print(
-            f" 📥  Top 50 shortest paths with node and residue mapping written to {top_file}")
+            f" 📥  Top shortest paths with node and residue mapping written to {top_file}")
 
     def calculate_shortest_path_between_residues(self, residue1, residue2):
         """
@@ -533,9 +541,10 @@ class NetworkParameters:
                     f.write(f"{edge_str}\t{centrality:.4f}\n")
         end_time = time.time()
 
-    def identify_top_10_percent_nodes(self, centralities, output_file):
+    def identify_top_percent_nodes(self, centralities, output_file):
         """
-        Identifies the top 5% nodes based on centrality measures and saves them as allosteric hotspots.
+        Identify the top `self.top_percent`% nodes (per protein) by centrality and
+        save them as allosteric hotspots.
 
         Args:
             centralities (tuple): A tuple containing dictionaries for betweenness, closeness, and degree centralities.
@@ -543,7 +552,9 @@ class NetworkParameters:
         """
         betweenness, closeness, degree = centralities
         num_nodes = len(betweenness)
-        top_n = max(1, num_nodes // 20)
+        # int() floors, matching the previous num_nodes // 20 at top_percent = 5.
+        top_n = max(1, int(num_nodes * self.top_percent / 100.0))
+        pct_label = f"{self.top_percent:g}"
         # Sorting nodes based on centrality measures
         sorted_betweenness = sorted(betweenness.items(), key=lambda x: x[1],
                                     reverse=True)[:top_n]
@@ -557,11 +568,11 @@ class NetworkParameters:
                         [node for node, _ in sorted_degree])
 
         with open(output_file, 'w') as f:
-            f.write("Top 5% Nodes (Allosteric Hotspots):\n")
+            f.write(f"Top {pct_label}% Nodes (Allosteric Hotspots):\n")
             for node in top_nodes:
                 res_name0, atom_name0, res_num0, chain_id0 = self.atom_mapping.get(
                     str(node), ("Unknown", "Unknown", "Unknown", "Unknown"))
                 f.write(f"Node ({res_num0}, {chain_id0})\n")
 
         print(
-            f" 📥  Top 5% nodes identified and saved as allosteric hotspots to {output_file} ")
+            f" 📥  Top {pct_label}% nodes identified and saved as allosteric hotspots to {output_file} ")

@@ -135,16 +135,7 @@ def run_pca(arg, matrices, n, first_timer):
 
     data = reshape_matrices(matrices)
     del matrices
-    '''
-    #checking the inverse of cp
-    print("started plotting cp")
-    sns.heatmap(cp_mat, cmap='viridis', cbar=True)
-    plt.title('Heatmap of cp_mat')
 
-    # Show the plot
-    plt.tight_layout()
-    plt.savefig("plot_cp.png")
-    '''
     # Perform PCA & generate adjacency matrix
     pca_result = perform_pca(data)
     del data

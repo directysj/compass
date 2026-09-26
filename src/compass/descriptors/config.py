@@ -21,7 +21,7 @@ allowed_heavies = {"S", "N", "O"}
 # separate from allowed_params so existing config files (without them) still
 # validate.
 optional_params = {
-    "distance cutoffs": {"edge_weight"},
+    "distance cutoffs": {"edge_weight", "top_percent", "path_coverage_percent"},
 }
 
 # How the PCA adjacency (a similarity in [0,1], higher = stronger coupling) is
@@ -31,6 +31,17 @@ optional_params = {
 #   inverse   : weight = 1 / adjacency        (strong coupling -> short path)
 #   neglog    : weight = -log(adjacency)      (strong coupling -> short path)
 allowed_edge_weights = {"adjacency", "inverse", "neglog"}
+
+
+def _parse_percent(value, name):
+    """Parse a percentage in the half-open range (0, 100]."""
+    try:
+        pct = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number, got '{value}'.")
+    if not (0 < pct <= 100):
+        raise ValueError(f"{name} must be in (0, 100], got {pct}.")
+    return pct
 
 
 def read_config_file(config_path):
@@ -144,6 +155,14 @@ def parse_params(config_path):
             f"got '{edge_weight}'."
         )
     param_space.edge_weight = edge_weight
+
+    # Percentile knobs (per protein/project); optional, defaults preserve the
+    # original hard-coded behaviour.
+    param_space.top_percent = _parse_percent(
+        param_dict["distance cutoffs"].get("top_percent", "5"), "top_percent")
+    param_space.path_coverage_percent = _parse_percent(
+        param_dict["distance cutoffs"].get("path_coverage_percent", "20"),
+        "path_coverage_percent")
 
     # alternative paths between residues
     param_space.find_path = str(param_dict["paths"]["find_path"])

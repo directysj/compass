@@ -216,13 +216,15 @@ class PyMOLVisualizer:
             file.write(f"set cartoon_transparency, 0.6\n")
 
         # Set sphere size based on centrality
-        max_centrality = centrality_df[
-            'Betweenness'].max()  # Avoid division by zero
+        max_centrality = centrality_df['Betweenness'].max() \
+            if not centrality_df.empty else 0
         for _, row in centrality_df.iterrows():
             res_num = row['Node_Res_Num']
             chain_id = row['Chain_ID']
             centrality_value = row['Betweenness']
-            norm_centrality = centrality_value / max_centrality
+            # Guard against all-zero / empty centrality (max <= 0 or NaN)
+            norm_centrality = (centrality_value / max_centrality
+                               if max_centrality > 0 else 0.0)
             sphere_scale = 0.3 + 1 * norm_centrality  # Simplified sphere scale calculation
             for file in output_files.values():
                 file.write(
@@ -231,8 +233,8 @@ class PyMOLVisualizer:
                     f"set sphere_scale, {sphere_scale:.2f}, chain {chain_id} and resi {res_num} and (name CA or name C5')\n")
 
         # Draw edges with thickness based on edge betweenness
-        max_betweenness = betweenness_df[
-            'Betweenness'].max()  # Avoid division by zero
+        max_betweenness = betweenness_df['Betweenness'].max() \
+            if not betweenness_df.empty else 0
         for _, row in betweenness_df.iterrows():
             # print(row.keys())
             res1 = int(row['Res1'])
@@ -241,7 +243,9 @@ class PyMOLVisualizer:
             chain2 = str(row['Chain2'])
             betweenness_value = row['Betweenness']
 
-            norm_betweenness = betweenness_value / max_betweenness
+            # Guard against all-zero / empty betweenness (max <= 0 or NaN)
+            norm_betweenness = (betweenness_value / max_betweenness
+                                if max_betweenness > 0 else 0.0)
             thickness = 0.5 + 10 * norm_betweenness
 
             output_files["all"].write(
@@ -375,7 +379,8 @@ class PyMOLVisualizer:
             # Read edge betweenness data
             betweenness_df = ReadFiles.read_edge_betweenness_from_file(
                 edge_betweenness_file)
-            max_betweenness = betweenness_df['Betweenness'].max()
+            max_betweenness = betweenness_df['Betweenness'].max() \
+                if not betweenness_df.empty else 0
         except Exception as e:
             print(f"Error reading edge betweenness file: {e}")
             return
@@ -434,7 +439,8 @@ class PyMOLVisualizer:
 
                         betweenness_value = edge_betweenness_row.iloc[0][
                             'Betweenness']
-                        norm_betweenness = betweenness_value / max_betweenness
+                        norm_betweenness = (betweenness_value / max_betweenness
+                                            if max_betweenness > 0 else 0.0)
                         thickness = 1 + 10 * norm_betweenness
 
                         # Selection commands

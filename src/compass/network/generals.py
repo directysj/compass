@@ -66,13 +66,18 @@ def process_graphs(param_space, distance_cutoffs):
             f" 🖥️  Processed graph for cutoff {distance_cutoff} in {round(time.time() - start_time, 2)} seconds")
 
 
-def process_graph_files(results_dir, dist_cutoff_graph):
+def process_graph_files(results_dir, dist_cutoff_graph, top_percent=5.0,
+                        path_coverage_percent=20.0):
     """
     Process all graph files in the specified results directory.
 
     Args:
         results_dir (str): Path to the directory containing the result files.
+        top_percent (float): Percentage of residues reported as top hotspot nodes.
+        path_coverage_percent (float): Residue-coverage threshold for collecting
+            top shortest paths.
     """
+    pct_label = f"{top_percent:g}"
     # List all .json files in the results directory
     for filename in os.listdir(results_dir):
         if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
@@ -81,8 +86,9 @@ def process_graph_files(results_dir, dist_cutoff_graph):
             # Load the graph and atom mapping
             graph, atom_mapping = ReadFiles().load_graph_and_mapping(json_path)
             # Initialize NetworkParameters
-            network_parameters = NetworkParameters(G=graph,
-                                                   atom_mapping=atom_mapping)
+            network_parameters = NetworkParameters(
+                G=graph, atom_mapping=atom_mapping, top_percent=top_percent,
+                path_coverage_percent=path_coverage_percent)
             # Define output file names based on the JSON file prefix
             prefix = filename.replace('.json', '')
             shortest_paths_file = os.path.join(results_dir,
@@ -95,7 +101,7 @@ def process_graph_files(results_dir, dist_cutoff_graph):
             edge_betweenness_file = os.path.join(results_dir,
                                                  f"{prefix}_edge_betweenness.txt")
             top_nodes_file = os.path.join(results_dir,
-                                          f"{prefix}_top_5_percent_nodes.txt")
+                                          f"{prefix}_top_{pct_label}_percent_nodes.txt")
             top_shortest_paths_file = os.path.join(results_dir,
                                                    f"{prefix}_top_10_shortest_paths.txt")
             lengths_file = os.path.join(results_dir,
@@ -110,9 +116,9 @@ def process_graph_files(results_dir, dist_cutoff_graph):
             edge_betweenness = network_parameters.calculate_edge_betweenness()
             network_parameters.save_edge_betweenness(edge_betweenness,
                                                      edge_betweenness_file)
-            # Identify top 10% nodes and save them
-            network_parameters.identify_top_10_percent_nodes(centralities,
-                                                             top_nodes_file)
+            # Identify top-percent nodes and save them
+            network_parameters.identify_top_percent_nodes(centralities,
+                                                          top_nodes_file)
 
 
 def find_paths(pdb_file, results_dir, dist_cutoff_graph, source_res,
@@ -193,13 +199,16 @@ def process_graph_files_for_communities_and_cliques(results_dir,
 
 
 def generate_pymol_scripts(results_dir, pdb_file, dist_cutoff_graph,
-                           dist_cutoff_clique):
+                           dist_cutoff_clique, top_percent=5.0):
     """
     Generates PyMOL scripts based on the provided graph and file results.
 
     Args:
         results_dir (str): Directory containing result files and JSON graph files.
+        top_percent (float): Must match process_graph_files so the top-nodes
+            filename (top_<pct>_percent_nodes.txt) is read back correctly.
     """
+    pct_label = f"{top_percent:g}"
     for filename in os.listdir(results_dir):
         if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
             json_path = os.path.join(results_dir, filename)
@@ -214,10 +223,10 @@ def generate_pymol_scripts(results_dir, pdb_file, dist_cutoff_graph,
             edge_betweenness_file = os.path.join(results_dir,
                                                  f"{prefix}_edge_betweenness.txt")
             top_nodes_file = os.path.join(results_dir,
-                                          f"{prefix}_top_5_percent_nodes.txt")
+                                          f"{prefix}_top_{pct_label}_percent_nodes.txt")
             paths_file = os.path.join(results_dir, f"{prefix}_paths.txt")
             output_pml_file = os.path.join(results_dir,
-                                           f"{prefix}_top_5_percent.pml")
+                                           f"{prefix}_top_{pct_label}_percent.pml")
             output_pml_communities = os.path.join(results_dir,
                                                   f"{prefix}_communities.pml")
             output_top_paths = os.path.join(results_dir,

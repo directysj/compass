@@ -145,16 +145,21 @@ class GraphConstructor:
         """
         if not nx.is_connected(G):
             # print("Graph is not connected. Attempting to connect components.")
+            # Artificial bridges get the MAX existing edge weight so the
+            # shortest-path / centrality algorithms treat them as the costliest
+            # (last-resort) links, rather than free edges (a missing 'weight'
+            # defaults to 1 in NetworkX, whose scale varies with edge_weight mode).
+            existing = [d.get('weight', 0.0) for _, _, d in G.edges(data=True)]
+            bridge_weight = max(existing) if existing else 1.0
+
             components = list(nx.connected_components(G))
             largest_component = max(components, key=len)
-            subgraphs = [G.subgraph(component) for component in components]
 
             # Connect all components to the largest component
             for component in components:
                 if component != largest_component:
-                    G.add_edges_from(
-                        [(list(largest_component)[0], list(component)[0])]
-                    )
+                    G.add_edge(list(largest_component)[0], list(component)[0],
+                               weight=bridge_weight, adjacency=0.0)
         return G
 
     def write_selected_atoms_to_pdb(self, input_pdb_file, output_pdb_file):

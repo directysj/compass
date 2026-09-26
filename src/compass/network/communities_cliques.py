@@ -64,7 +64,6 @@ class CommunityDetector:
 
         return communities, modularity
 
-    @staticmethod
     def _collect_members_partition(self, communities):
         """
         Organizes communities by community index.
@@ -80,12 +79,11 @@ class CommunityDetector:
         for node, comm_idx in communities.items():
             if comm_idx not in community_groups:
                 community_groups[comm_idx] = []
-            # print(self.atom_mapping.keys())
             # Try to get residue information
             res_name, atom_name, res_num, chain_id = self.atom_mapping.get(
                 str(node), ("Unknown", "Unknown", "Unknown", "Unknown"))
 
-            # FIX: Skip nodes with unknown residue information
+            # Skip nodes with unknown residue information
             if res_name == "Unknown" or chain_id == "Unknown" or res_num == "Unknown":
                 unknown_count += 1
                 continue
@@ -93,8 +91,9 @@ class CommunityDetector:
             str_node_details = f"{chain_id}_{res_num}"
             community_groups[comm_idx].append(str_node_details)
 
-            if unknown_count > 0:
-                print(f" ⚠️  Warning: Skipped {unknown_count} nodes with unknown residue information in communities")
+        if unknown_count > 0:
+            print(f" ⚠️  Warning: Skipped {unknown_count} nodes with unknown "
+                  f"residue information in communities")
         return community_groups
 
     def save_communities_to_file(self, communities, output_file):
@@ -107,8 +106,7 @@ class CommunityDetector:
         """
         try:
             # First, organize communities by community index
-            community_groups = self._collect_members_partition(self,
-                                                               communities)
+            community_groups = self._collect_members_partition(communities)
             with open(output_file, 'w') as f:
                 f.write(
                     f"Communities file. This file contains the community members information in the order chain_id residue_number\n")

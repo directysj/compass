@@ -132,7 +132,9 @@ def runner():
     print(f' ⏳  Until graphs construction: {graph_time} s')
 
     # Compute network parameters
-    gn.process_graph_files(arg.network_dir, dist_cutoffs[0])
+    gn.process_graph_files(arg.network_dir, dist_cutoffs[0],
+                           top_percent=arg.top_percent,
+                           path_coverage_percent=arg.path_coverage_percent)
     network_time = round(time.time() - first_timer, 2)
     print(f' ⏳  Until network parameters computed: {network_time} s')
 
@@ -152,7 +154,8 @@ def runner():
         arg.network_dir,
         arg.pdb_file_path,
         dist_cutoffs[0],
-        dist_cutoffs[1]
+        dist_cutoffs[1],
+        top_percent=arg.top_percent
     )
     if dict_arg["paths"]["find_path"] == 'True':
         source_residues = dict_arg["paths"]["sources"].split(",")
