@@ -44,7 +44,7 @@ class NetworkParameters:
 
     def compute_shortest_paths(self, all_paths_file, top_file):
         """
-        Compute shortest paths between nodes until reaching 20% of total residues.
+        Compute the shortest paths between nodes until reaching 20% of total residues.
 
         The method uses an optimized sequential approach that:
         1. Computes shortest paths between all node pairs
@@ -60,25 +60,22 @@ class NetworkParameters:
             dict: Dictionary of path lengths between node pairs
         """
         # print("Starting shortest path computations...")
-        nodes = sorted(
-            list(self.G.nodes()))  # Sort nodes for consistent results
+        nodes = sorted(list(self.G.nodes()))  # Sort nodes for consistent results
 
         # Compute all shortest paths
         shortest_paths, path_lengths = self._compute_all_shortest_paths(nodes)
 
         # Process paths and apply residue threshold
-        collected_paths = self._collect_paths_until_threshold(
-            nodes, shortest_paths, path_lengths
-        )
+        collected_paths = self._collect_paths_until_threshold(nodes, shortest_paths, path_lengths)
+
         # Save results to files
-        self._save_paths(all_paths_file, top_file, collected_paths,
-                         shortest_paths)
+        self._save_paths(all_paths_file, top_file, collected_paths, shortest_paths)
 
         return path_lengths
 
     def _compute_all_shortest_paths(self, nodes):
         """
-        Compute shortest paths between all node pairs efficiently.
+        Compute the shortest paths between all node pairs efficiently.
 
         Uses single_source_dijkstra to compute paths from each source node
         to all possible targets in one pass, improving performance.
@@ -96,8 +93,7 @@ class NetworkParameters:
         for source in nodes:
             try:
                 # Compute all shortest paths from source in one call
-                distances, paths = nx.single_source_dijkstra(self.G, source,
-                                                             weight='weight')
+                distances, paths = nx.single_source_dijkstra(self.G, source, weight='weight')
                 # This avoids redundant path storage
                 for target in (n for n in nodes if n > source):
                     if target in paths:
@@ -107,8 +103,8 @@ class NetworkParameters:
                 continue
 
         end_time = time.time()
-        print(
-            f" 📐  Shortest paths computation completed in {end_time - start_time:.2f} seconds")
+        print(f" 📐  Shortest paths computation completed in {end_time - start_time:.2f} seconds")
+
         return shortest_paths, path_lengths
 
     def _collect_paths_until_threshold(self, nodes, shortest_paths,
@@ -185,10 +181,9 @@ class NetworkParameters:
                 file.write(" -> ".join(formatted_path) + "\n\n")
 
         # Write detailed top paths with residue mapping
-        self.write_top_50_shortest_paths_with_mapping(collected_paths,
-                                                      shortest_paths, top_file)
+        self.write_top_pct_shortest_paths_with_mapping(collected_paths, shortest_paths, top_file)
 
-    def write_top_50_shortest_paths_with_mapping(self, top_paths,
+    def write_top_pct_shortest_paths_with_mapping(self, top_paths,
                                                  shortest_paths, top_file):
         """
         Write detailed path information including residue mapping.
@@ -199,8 +194,7 @@ class NetworkParameters:
             top_file (str): Output file path
         """
         with open(top_file, 'w') as file:
-            file.write(f"Top Shortest Paths (collected until {self.path_coverage_percent:g}% "
-                       f"residue coverage):\n")
+            file.write(f"Top Shortest Paths (collected until {self.path_coverage_percent:g}% residue coverage):\n")
             unique_top_paths = set()
 
             for source, target, length in top_paths:
@@ -234,8 +228,7 @@ class NetworkParameters:
                         print(
                             f"Error processing path {source} -> {target}: {str(e)}")
 
-        print(
-            f" 📥  Top shortest paths with node and residue mapping written to {top_file}")
+        print(f" 📥  Top shortest paths with node and residue mapping written to {top_file}")
 
     def calculate_shortest_path_between_residues(self, residue1, residue2):
         """
@@ -249,8 +242,7 @@ class NetworkParameters:
             tuple: The shortest path length and the path as a list of nodes.
         """
         try:
-            length, path = nx.single_source_dijkstra(self.G, residue1,
-                                                     target=residue2)
+            length, path = nx.single_source_dijkstra(self.G, residue1, target=residue2)
             return length, path
         except nx.NetworkXNoPath:
             return float('inf'), []
@@ -295,8 +287,7 @@ class NetworkParameters:
         plt.savefig(heatmap_file)
         plt.close()
         end_time = time.time()
-        print(
-            f"Heatmap created and saved in {end_time - start_time:.2f} seconds")
+        print(f"Heatmap created and saved in {end_time - start_time:.2f} seconds")
 
     def generate_paths_chunk(self, start_nodes, source_node, target_node):
         """
@@ -574,5 +565,4 @@ class NetworkParameters:
                     str(node), ("Unknown", "Unknown", "Unknown", "Unknown"))
                 f.write(f"Node ({res_num0}, {chain_id0})\n")
 
-        print(
-            f" 📥  Top {pct_label}% nodes identified and saved as allosteric hotspots to {output_file} ")
+        print(f" 📥  Top {pct_label}% nodes identified and saved as allosteric hotspots to {output_file} ")

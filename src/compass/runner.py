@@ -155,7 +155,8 @@ def runner():
         arg.pdb_file_path,
         dist_cutoffs[0],
         dist_cutoffs[1],
-        top_percent=arg.top_percent
+        top_percent=arg.top_percent,
+        path_coverage_percent=arg.path_coverage_percent
     )
     if dict_arg["paths"]["find_path"] == 'True':
         source_residues = dict_arg["paths"]["sources"].split(",")

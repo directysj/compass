@@ -2,11 +2,9 @@
 import os
 import time
 import shutil
-import json
-import networkx as nx
 
-from compass.network.communities_cliques import CliqueDetector, \
-    CommunityDetector
+
+from compass.network.communities_cliques import CliqueDetector, CommunityDetector
 from compass.network.graph_constructor import GraphConstructor
 from compass.network.networkparameters import NetworkParameters
 from compass.network.pymol_visualizer import PyMOLVisualizer
@@ -35,8 +33,7 @@ def process_graphs(param_space, distance_cutoffs):
     if atom_mapping_file and os.path.exists(atom_mapping_file):
         atom_mapping = ReadFiles().load_atom_mapping(atom_mapping_file)
     else:
-        atom_mapping, _ = graph_constructor.reader.atom_mapping(
-            param_space.pdb_file_path)
+        atom_mapping, _ = graph_constructor.reader.atom_mapping(param_space.pdb_file_path)
 
     # Iterate over each distance cutoff to build and process the graph
     for distance_cutoff in graph_constructor.distance_cutoffs:
@@ -44,26 +41,26 @@ def process_graphs(param_space, distance_cutoffs):
         # Generate atom mapping before saving the graph
         # Build the graph
         G = graph_constructor.build_graph_from_matrices(
-            distance_file=param_space.min_dist_matrix_file,
-            adjacency_file=param_space.adjacency_file,
-            distance_cutoff=distance_cutoff,
-            atom_mapping=atom_mapping)
+            distance_file   = param_space.min_dist_matrix_file,
+            adjacency_file  = param_space.adjacency_file,
+            distance_cutoff = distance_cutoff,
+            atom_mapping    = atom_mapping
+        )
+
         # Ensure graph connectivity
         G = graph_constructor.ensure_graph_connectivity(G)
+
         # Define file names based on the distance cutoff
         graph_filename = f"graph_cutoff_{distance_cutoff}.json"
-        output_graph_file = os.path.join(param_space.network_dir,
-                                         graph_filename)
+        output_graph_file = os.path.join(param_space.network_dir, graph_filename)
+
         # Save the graph and atom mapping
-        graph_constructor.save_graph_and_mapping(G, atom_mapping,
-                                                 output_file=output_graph_file)
+        graph_constructor.save_graph_and_mapping(G, atom_mapping, output_file=output_graph_file)
+
         # Plot and save histogram
-        output_file_prefix = os.path.join(param_space.network_dir,
-                                          f"graph_cutoff_{distance_cutoff}")
-        graph_constructor.plot_and_save_histogram(G,
-                                                  output_file_prefix=output_file_prefix)
-        print(
-            f" 🖥️  Processed graph for cutoff {distance_cutoff} in {round(time.time() - start_time, 2)} seconds")
+        output_file_prefix = os.path.join(param_space.network_dir, f"graph_cutoff_{distance_cutoff}")
+        graph_constructor.plot_and_save_histogram(G, output_file_prefix=output_file_prefix)
+        print(f" 🖥️  Processed graph for cutoff {distance_cutoff} in {round(time.time() - start_time, 2)} seconds")
 
 
 def process_graph_files(results_dir, dist_cutoff_graph, top_percent=5.0,
@@ -77,7 +74,8 @@ def process_graph_files(results_dir, dist_cutoff_graph, top_percent=5.0,
         path_coverage_percent (float): Residue-coverage threshold for collecting
             top shortest paths.
     """
-    pct_label = f"{top_percent:g}"
+    pct_label = f"{top_percent:g}"             # Top percentage nodes
+    cov_label = f"{path_coverage_percent:g}"   # Top percentage paths
     # List all .json files in the results directory
     for filename in os.listdir(results_dir):
         if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
@@ -87,38 +85,35 @@ def process_graph_files(results_dir, dist_cutoff_graph, top_percent=5.0,
             graph, atom_mapping = ReadFiles().load_graph_and_mapping(json_path)
             # Initialize NetworkParameters
             network_parameters = NetworkParameters(
-                G=graph, atom_mapping=atom_mapping, top_percent=top_percent,
-                path_coverage_percent=path_coverage_percent)
+                G                     = graph,
+                atom_mapping          = atom_mapping,
+                top_percent           = top_percent,
+                path_coverage_percent = path_coverage_percent
+            )
             # Define output file names based on the JSON file prefix
             prefix = filename.replace('.json', '')
-            shortest_paths_file = os.path.join(results_dir,
-                                               f"{prefix}_shortest_paths.txt")
-            shortest_paths_with_labels_file = os.path.join(results_dir,
-                                                           f"{prefix}_shortest_paths_with_labels.txt")
+            shortest_paths_file = os.path.join(results_dir, f"{prefix}_shortest_paths.txt")
+            shortest_paths_with_labels_file = os.path.join(results_dir, f"{prefix}_shortest_paths_with_labels.txt")
             heatmap_file = os.path.join(results_dir, f"{prefix}_heatmap.png")
-            centralities_file = os.path.join(results_dir,
-                                             f"{prefix}_centralities.txt")
-            edge_betweenness_file = os.path.join(results_dir,
-                                                 f"{prefix}_edge_betweenness.txt")
-            top_nodes_file = os.path.join(results_dir,
-                                          f"{prefix}_top_{pct_label}_percent_nodes.txt")
-            top_shortest_paths_file = os.path.join(results_dir,
-                                                   f"{prefix}_top_10_shortest_paths.txt")
-            lengths_file = os.path.join(results_dir,
-                                        f"{prefix}_shortest_path_lengths.txt")
-
+            centralities_file = os.path.join(results_dir, f"{prefix}_centralities.txt")
+            edge_betweenness_file = os.path.join(results_dir, f"{prefix}_edge_betweenness.txt")
+            top_nodes_file = os.path.join(results_dir, f"{prefix}_top_{pct_label}_percent_nodes.txt")
+            top_shortest_paths_file = os.path.join(results_dir, f"{prefix}_top_{cov_label}pct_shortest_paths.txt")
+            lengths_file = os.path.join(results_dir, f"{prefix}_shortest_path_lengths.txt")
+            # Get shortest paths as per selected top nodes and percentage coverage
             shortest_paths = network_parameters.compute_shortest_paths(
                 shortest_paths_file,  # File for all shortest paths
-                top_shortest_paths_file)
+                top_shortest_paths_file
+            )
+            print(f"Shortest path lengths are saved in {lengths_file}")
+            print(f"Number of top shortest paths: {len(shortest_paths)}")
             centralities = network_parameters.calculate_centralities()
-            network_parameters.save_centrality_measures(centralities,
-                                                        centralities_file)
+            network_parameters.save_centrality_measures(centralities, centralities_file)
             edge_betweenness = network_parameters.calculate_edge_betweenness()
-            network_parameters.save_edge_betweenness(edge_betweenness,
-                                                     edge_betweenness_file)
+            network_parameters.save_edge_betweenness(edge_betweenness, edge_betweenness_file)
+
             # Identify top-percent nodes and save them
-            network_parameters.identify_top_percent_nodes(centralities,
-                                                          top_nodes_file)
+            network_parameters.identify_top_percent_nodes(centralities, top_nodes_file)
 
 
 def find_paths(pdb_file, results_dir, dist_cutoff_graph, source_res,
@@ -130,28 +125,27 @@ def find_paths(pdb_file, results_dir, dist_cutoff_graph, source_res,
             # Load the graph and atom mapping
             graph, atom_mapping = ReadFiles().load_graph_and_mapping(json_path)
             # Initialize NetworkParameters
-            network_parameters = NetworkParameters(G=graph,
-                                                   atom_mapping=atom_mapping)
+            network_parameters = NetworkParameters(G=graph, atom_mapping=atom_mapping)
             # Define output file names based on the JSON file prefix
-            visualizer = PyMOLVisualizer(pdb_file=pdb_file,
-                                         atom_mapping=atom_mapping,
-                                         graph=graph)
+            visualizer = PyMOLVisualizer(
+                pdb_file=pdb_file,
+                atom_mapping=atom_mapping,
+                graph=graph
+            )
             prefix = filename.replace('.json', '')
-            alt_paths_file = os.path.join(results_dir,
-                                          f"{prefix}_alt_paths.txt")
-            network_parameters.find_alternative_paths(source_res, target_res,
-                                                      alt_paths_file)
-            output_pml_file = os.path.join(results_dir,
-                                           f"{prefix}_alt_paths.pml")
+            alt_paths_file = os.path.join(results_dir, f"{prefix}_alt_paths.txt")
+            network_parameters.find_alternative_paths(source_res, target_res, alt_paths_file)
+            output_pml_file = os.path.join(results_dir, f"{prefix}_alt_paths.pml")
             if os.path.exists(alt_paths_file):
-                visualizer.write_pml_script_for_alternative_paths(
-                    alt_paths_file, output_pml_file)
+                visualizer.write_pml_script_for_alternative_paths(alt_paths_file, output_pml_file)
                 # print(f" 🧩  Alternative paths were being written to {alt_paths_file}")
 
 
-def process_graph_files_for_communities_and_cliques(results_dir,
-                                                    dist_cutoff_graph,
-                                                    dist_cutoff_clique):
+def process_graph_files_for_communities_and_cliques(
+        results_dir,
+        dist_cutoff_graph,
+        dist_cutoff_clique
+):
     """
     Processes graph files in the specified directory to detect communities and cliques.
 
@@ -198,17 +192,25 @@ def process_graph_files_for_communities_and_cliques(results_dir,
             clique_detector.save_cliques_to_file(cliques, cliques_file)
 
 
-def generate_pymol_scripts(results_dir, pdb_file, dist_cutoff_graph,
-                           dist_cutoff_clique, top_percent=5.0):
+def generate_pymol_scripts(
+        results_dir,
+        pdb_file,
+        dist_cutoff_graph,
+        dist_cutoff_clique,
+        top_percent=5.0,
+        path_coverage_percent: float = 20.0
+):
     """
     Generates PyMOL scripts based on the provided graph and file results.
 
     Args:
         results_dir (str): Directory containing result files and JSON graph files.
         top_percent (float): Must match process_graph_files so the top-nodes
-            filename (top_<pct>_percent_nodes.txt) is read back correctly.
+           filename (top_<pct>_percent_nodes.txt) is read back correctly.
+        path_coverage_percent (float): Must match process_graph_files so the path
     """
     pct_label = f"{top_percent:g}"
+    cov_label = f"{path_coverage_percent:g}"  # Top percentage paths
     for filename in os.listdir(results_dir):
         if filename == f'graph_cutoff_{dist_cutoff_graph}.json':
             json_path = os.path.join(results_dir, filename)
@@ -216,66 +218,56 @@ def generate_pymol_scripts(results_dir, pdb_file, dist_cutoff_graph,
             # Load the graph and atom mapping
             graph, atom_mapping = ReadFiles().load_graph_and_mapping(json_path)
             # Set paths for the corresponding files
-            communities_file = os.path.join(results_dir,
-                                            f"{prefix}_communities_leiden.txt")
-            centrality_file = os.path.join(results_dir,
-                                           f"{prefix}_centralities.txt")
-            edge_betweenness_file = os.path.join(results_dir,
-                                                 f"{prefix}_edge_betweenness.txt")
-            top_nodes_file = os.path.join(results_dir,
-                                          f"{prefix}_top_{pct_label}_percent_nodes.txt")
+            communities_file = os.path.join(results_dir, f"{prefix}_communities_leiden.txt")
+            centrality_file = os.path.join(results_dir, f"{prefix}_centralities.txt")
+            edge_betweenness_file = os.path.join(results_dir, f"{prefix}_edge_betweenness.txt")
+            top_nodes_file = os.path.join(results_dir, f"{prefix}_top_{pct_label}_percent_nodes.txt")
             paths_file = os.path.join(results_dir, f"{prefix}_paths.txt")
-            output_pml_file = os.path.join(results_dir,
-                                           f"{prefix}_top_{pct_label}_percent.pml")
-            output_pml_communities = os.path.join(results_dir,
-                                                  f"{prefix}_communities.pml")
-            output_top_paths = os.path.join(results_dir,
-                                            f"{prefix}_top_paths.pml")
-            top_15_file = os.path.join(results_dir,
-                                       f"{prefix}_top_10_shortest_paths.txt")
-            pdb_output_path = os.path.join(results_dir,os.path.basename(pdb_file))
+            output_pml_file = os.path.join(results_dir, f"{prefix}_top_{pct_label}_percent.pml")
+            output_pml_communities = os.path.join(results_dir, f"{prefix}_communities.pml")
+            output_top_paths = os.path.join(results_dir, f"{prefix}_top_paths.pml")
+            top_paths_file = os.path.join(results_dir, f"{prefix}_top_{cov_label}pct_shortest_paths.txt")
+            pdb_output_path = os.path.join(results_dir, os.path.basename(pdb_file))
             shutil.copy(pdb_file, pdb_output_path)
 
             # Initialize PyMOLVisualizer
-            visualizer = PyMOLVisualizer(pdb_file=pdb_file,
-                                         atom_mapping=atom_mapping,
-                                         graph=graph)
+            visualizer = PyMOLVisualizer(pdb_file=pdb_file, atom_mapping=atom_mapping, graph=graph)
 
             # Generate PyMOL scripts
             if os.path.exists(communities_file):
-                visualizer.communities_pml(communities_file,
-                                           output_pml_communities)
+                visualizer.communities_pml(communities_file, output_pml_communities)
 
             if os.path.exists(centrality_file) and os.path.exists(
                     edge_betweenness_file):
-                visualizer.graph_pml(centrality_file, edge_betweenness_file,
-                                     os.path.join(results_dir,
-                                                  f"{prefix}_graph"))
+                visualizer.graph_pml(
+                    centrality_file,
+                    edge_betweenness_file,
+                    os.path.join(results_dir, f"{prefix}_graph")
+                )
 
             if os.path.exists(top_nodes_file):
                 # print(f" ⚙️ Processing: {pdb_file}, {top_nodes_file}, {output_pml_file}")
-                visualizer.highlight_top_nodes_pml(pdb_file, atom_mapping,
-                                                   top_nodes_file,
-                                                   output_pml_file)
+                visualizer.highlight_top_nodes_pml(pdb_file, atom_mapping, top_nodes_file, output_pml_file)
 
             if os.path.exists(paths_file):
                 with open(paths_file, 'r') as f:
                     residue_list = [line.strip() for line in f]
-                visualizer.write_pml_script_for_residue_paths(residue_list,
-                                                              os.path.join(
-                                                                  results_dir,
-                                                                  f"{prefix}_paths.pml"))
-            visualizer.write_pml_script_for_top_shortest_paths(top_15_file,
-                                                               edge_betweenness_file,
-                                                               output_top_paths)
+                visualizer.write_pml_script_for_residue_paths(
+                    residue_list,
+                    os.path.join(results_dir, f"{prefix}_paths.pml")
+                )
+            visualizer.write_pml_script_for_top_shortest_paths(
+                top_paths_file,
+                edge_betweenness_file,
+                output_top_paths
+            )
 
     for filename in os.listdir(results_dir):
         if filename == f'graph_cutoff_{dist_cutoff_clique}.json':
             json_path = os.path.join(results_dir, filename)
             prefix = filename.replace('.json', '')
             cliques_file = os.path.join(results_dir, f"{prefix}_cliques.txt")
-            output_pml_cliques = os.path.join(results_dir,
-                                              f"{prefix}_cliques.pml")
+            output_pml_cliques = os.path.join(results_dir, f"{prefix}_cliques.pml")
             # print("started writing pml for cliques")
             if os.path.exists(cliques_file):
                 visualizer.cliques_pml(cliques_file, output_pml_cliques)
