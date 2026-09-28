@@ -114,11 +114,10 @@ def _backbone_anchor_indices(trajectory):
     """
     top = trajectory.topology
     ca_atoms = top.select("name CA")
-    p_atoms = top.select(
-        f'({_DNA_RESNAME} or {_RNA_RESNAME}) and name "C5\'"')
+    p_atoms = top.select(f'({_DNA_RESNAME} or {_RNA_RESNAME}) and name "C5\'"')
     raw = np.concatenate((ca_atoms, p_atoms)).astype(int)
-    anchors = [i for i in raw
-               if getattr(top.atom(int(i)).element, "symbol", None) == "C"]
+    anchors = [i for i in raw if getattr(top.atom(int(i)).element, "symbol", None) == "C"]
+
     return np.sort(np.asarray(anchors, dtype=int))
 
 
@@ -139,7 +138,7 @@ def get_resids_indices(trajectory):
     df = trajectory.topology.to_dataframe()[0]
 
     # Per-residue anchor atoms (protein CA / nucleic C5'); residues without an
-    # anchor -- water, ions, lipids, ligands -- are dropped entirely.
+    # anchor -- water, ions, lipids, ligands, and alpha-Calcium -- are dropped entirely.
     anchor_atoms = _backbone_anchor_indices(trajectory)
     anchor_set = set(int(i) for i in anchor_atoms)
 
@@ -155,9 +154,7 @@ def get_resids_indices(trajectory):
         if anchor_set.intersection(idx.tolist())
     }
     if not group_by_index:
-        raise ValueError(
-            "No protein or nucleic-acid residues found in the topology; "
-            "nothing for COMPASS to analyse.")
+        raise ValueError("No protein or nucleic-acid residues found in the topology; nothing for COMPASS to analyse.")
 
     # Create non-hydrogen version
     group_by_index_noh = {}
@@ -170,51 +167,13 @@ def get_resids_indices(trajectory):
 
     # Transform to zero-based indices dictionaries
     res_ind_zero = {i: group_by_index[x] for i, x in enumerate(group_by_index)}
-    res_ind_noh = {i: group_by_index_noh[x] for i, x in
-                   enumerate(group_by_index_noh)}
+    res_ind_noh = {i: group_by_index_noh[x] for i, x in enumerate(group_by_index_noh)}
 
     # Convert to numba dictionaries
     res_ind_numba = pydict_to_numbadict(res_ind_zero)
     res_ind_noh_numba = pydict_to_numbadict(res_ind_noh)
 
     return res_ind_numba, res_ind_noh_numba, babel_dict
-
-
-'''
-def get_resids_indices(trajectory):
-    """
-    Get indices of residues in the load trajectory
-
-    Args:
-        trajectory: trajectory loaded in mdtraj format
-
-    Returns:
-        res_ind_numba: numba Dict of each residue's indices
-        babel_dict: the equivalence between the original resid numbering and
-                    the 0-based used internally
-    """
-    # Parse the topological information
-    df = trajectory.topology.to_dataframe()[0]
-    group_by_index = df.groupby(["chainID", "resSeq", "segmentID"]).indices
-    group_by_index_noh = {}
-    for key in group_by_index:
-        values = group_by_index[key]
-        noh = values[df.loc[values, "element"] != "H"]
-        group_by_index_noh[key] = noh
-
-    babel_dict = {i: x for i, x in enumerate(group_by_index)}
-    babel_dict_noh = {i: x for i, x in enumerate(group_by_index_noh)}
-
-    # Transform to numba-dict
-    res_ind_zero = {i: group_by_index[x] for i, x in enumerate(group_by_index)}
-    res_ind_noh = {i: group_by_index_noh[x] for i, x in
-                   enumerate(group_by_index_noh)}
-
-    res_ind_numba = pydict_to_numbadict(res_ind_zero)
-    res_ind_noh_numba = pydict_to_numbadict(res_ind_noh)
-    return res_ind_numba, res_ind_noh_numba, babel_dict
-
-'''
 
 
 def get_corr_indices(trajectory, map_file):
@@ -639,13 +598,3 @@ class Mapping:
         # Print confirmation message
         # print(f"Restored PDB file saved as: {original_pdb}")
 
-# =============================================================================
-#
-# =============================================================================
-# import mdtraj as md
-# import prody as prd
-#
-# load topology and trajectory
-# topo = '/home/rglez/RoyHub/compass/data/MDs/nucleosome_full_2c/1kx5_dry.pdb'
-# traj = '/home/rglez/RoyHub/compass/data/MDs/nucleosome_full_2c/nuc-prot-trim.dcd'
-# out_dir = '/home/rglez/RoyHub/compass/data/outputs/nucleosome_full_2c'

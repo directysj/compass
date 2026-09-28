@@ -193,13 +193,6 @@ def save_matrix(arr, n, out_name, norm=False, prec=2):
         max_val = np.max(matrix)
         matrix = (matrix - min_val) / (max_val - min_val)
 
-    # Fill diagonal if requested
-    # if diag:
-    #     np.fill_diagonal(matrix, 1.0)
-
-    # Fill undefined rows with 0
-    # matrix[missing, :] = matrix[:, missing] = 0
-
     # Save matrix
     np.savetxt(out_name, matrix, fmt=f"%.{prec}f")
     return matrix
@@ -285,8 +278,7 @@ def process_matrices(arg, n, calphas, ave_min_dist, occ_nb, cp, occ_sb, occ_hb,
         # Save matrices
         matrix_name = get_matrix_name(arg.out_dir, arg.title, matrix)
         matrices_name.update({matrix: matrix_name})
-        matrix_data = save_matrix(data, n, matrix_name, norm=normalize,
-                                  prec=precision)
+        matrix_data = save_matrix(data, n, matrix_name, norm=normalize, prec=precision)
         matrices[matrix].update({"data": matrix_data})
 
         # Plot matrices
@@ -298,52 +290,3 @@ def process_matrices(arg, n, calphas, ave_min_dist, occ_nb, cp, occ_sb, occ_hb,
     print(f" ⏱️  Until saving & plotting matrices: {saving_time} s")
     return matrices, matrices_name
 
-#
-# # todo: specify correct diagonal filling behaviour
-# # todo: correct the titles of the graph
-#
-# no_miss = []
-# cp_miss = [i for i, x in enumerate(calphas) if calphas[x] == -1]
-#
-# min_dist_name = geom.get_matrix_name(arg.out_dir, arg.title, "MINDIST")
-# dist_mat = geom.save_matrix(ave_min_dist, n, no_miss, min_dist_name)
-# del ave_min_dist
-# corr.plot_matrix(dist_mat, min_dist_name.replace('.mat', '.png'))
-#
-# nb_name = geom.get_matrix_name(arg.out_dir, arg.title, "NONBOND")
-# nb_mat = geom.save_matrix(occ_nb, n, no_miss, nb_name)
-# del occ_nb
-# corr.plot_matrix(nb_mat, nb_name.replace('.mat', '.png'))
-#
-# cp_name = geom.get_matrix_name(arg.out_dir, arg.title, "COMMPROP")
-# cp_mat = geom.save_matrix(cp, n, cp_miss, cp_name, norm=True, prec=6)
-# del cp
-# corr.plot_matrix(cp_mat, cp_name.replace('.mat', '.png'))
-#
-# sb_name = geom.get_matrix_name(arg.out_dir, arg.title, "SALTBRIDGES")
-# sb_mat = geom.save_matrix(occ_sb, n, no_miss, sb_name)
-# del occ_sb
-# corr.plot_matrix(sb_mat, sb_name.replace('.mat', '.png'))
-#
-# hb_name = geom.get_matrix_name(arg.out_dir, arg.title, "HBONDS")
-# hb_mat = geom.save_matrix(occ_hb, n, no_miss, hb_name)
-# del occ_hb
-# corr.plot_matrix(hb_mat, hb_name.replace('.mat', '.png'))
-#
-# inter_name = geom.get_matrix_name(arg.out_dir, arg.title, "INTERACTIONS")
-# int_mat = geom.save_matrix(occ_int, n, no_miss, inter_name)
-# del occ_int
-# corr.plot_matrix(int_mat, inter_name.replace('.mat', '.png'))
-#
-# mi_name = geom.get_matrix_name(arg.out_dir, arg.title, "MI")
-# mi_mat = geom.save_matrix(mi, n, cp_miss, mi_name)
-# del mi
-# corr.plot_matrix(mi_mat, mi_name.replace('.mat', '.png'))
-#
-# gc_name = geom.get_matrix_name(arg.out_dir, arg.title, "GC")
-# gc_mat = geom.save_matrix(gc, n, cp_miss, gc_name)
-# del gc
-# corr.plot_matrix(gc_mat, gc_name.replace('.mat', '.png'))
-#
-# saving_time = round(time.time() - first_timer, 2)
-# print(f'Until saving & plotting matrices: {saving_time} s')

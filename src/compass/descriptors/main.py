@@ -107,19 +107,19 @@ def compute_descriptors(
         )
 
         pair_min_dist_sum += pair_min_dist
-        pair_cp_sum += pair_cp
-        pair_nb_sum += pair_nb
-        pair_sb_sum += pair_sb
-        pair_hb_sum += pair_hb
-        pair_int_sum += pair_int
+        pair_cp_sum       += pair_cp
+        pair_nb_sum       += pair_nb
+        pair_sb_sum       += pair_sb
+        pair_hb_sum       += pair_hb
+        pair_int_sum      += pair_int
 
         # Compute average values
     ave_min_dist = (pair_min_dist_sum / n_frames) * 10
-    ave_pair_cp = pair_cp_sum / n_frames
-    occ_nb = pair_nb_sum / n_frames
-    occ_sb = pair_sb_sum / n_frames
-    occ_hb = pair_hb_sum / n_frames
-    occ_int = pair_int_sum / n_frames
+    ave_pair_cp  = pair_cp_sum / n_frames
+    occ_nb       = pair_nb_sum / n_frames
+    occ_sb       = pair_sb_sum / n_frames
+    occ_hb       = pair_hb_sum / n_frames
+    occ_int      = pair_int_sum / n_frames
 
     # Do a 2nd pass to compute cp & extract coords for correlation matrices
     pair_cp_sum2 = np.zeros(n_pairs)
@@ -132,6 +132,7 @@ def compute_descriptors(
 
     k = 0
     get_chunk_cp(mini_traj.xyz, resids_to_atoms, ave_pair_cp, calphas)
+
     for chunk in chunks:
         pair_cp_sum2 += get_chunk_cp(chunk, resids_to_atoms, ave_pair_cp, calphas)
 
