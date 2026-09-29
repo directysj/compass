@@ -88,7 +88,9 @@ class CommunityDetector:
                 unknown_count += 1
                 continue
 
-            str_node_details = f"{chain_id}_{res_num}"
+            # Trailing _{node} disambiguates residues that share resSeq+chain
+            # (insertion codes / duplicated numbering); parsers read split('_')[:2].
+            str_node_details = f"{chain_id}_{res_num}_{node}"
             community_groups[comm_idx].append(str_node_details)
 
         if unknown_count > 0:
@@ -206,8 +208,9 @@ class CliqueDetector:
             if res_name == "Unknown" or chain_id == "Unknown" or res_num == "Unknown":
                 return None
 
-            # Prepare a string representing the node's details
-            str_node_details = f"{chain_id}_{res_num}"
+            # Prepare a string representing the node's details. Trailing _{member}
+            # disambiguates residues sharing resSeq+chain; parsers read [:2].
+            str_node_details = f"{chain_id}_{res_num}_{member}"
 
             return str_node_details
 

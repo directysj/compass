@@ -134,40 +134,48 @@ def get_resids_indices(trajectory):
         babel_dict: the equivalence between the original resid numbering and
                    the 0-based numbering used internally
     """
-    # Parse the topological information
-    df = trajectory.topology.to_dataframe()[0]
+    top = trajectory.topology
 
     # Per-residue anchor atoms (protein CA / nucleic C5'); residues without an
-    # anchor -- water, ions, lipids, ligands, and alpha-Calcium -- are dropped entirely.
+    # anchor -- water, ions, lipids, ligands, and alpha-Calcium -- are dropped.
     anchor_atoms = _backbone_anchor_indices(trajectory)
-    anchor_set = set(int(i) for i in anchor_atoms)
 
-    # Group EVERY atom by residue key first, so groupby(...).indices yields the
-    # real (topology-wide) atom indices. Grouping a pre-filtered frame instead
-    # returns positions WITHIN the subset -- wrong atom indices as soon as the
-    # system contains any non-protein atoms.
-    group_all = df.groupby(["chainID", "resSeq", "segmentID"]).indices
+    # Identify the residues that own an anchor, BY MDTraj's UNIQUE residue.index.
+    # Grouping on residue.index -- instead of (chainID, resSeq, segmentID) --
+    # keeps residues that share a residue number DISTINCT: insertion codes
+    # (100 / 100A) and duplicated numbering are no longer collapsed into one
+    # node. (MDTraj's dataframe has no insertion-code column, so the triple key
+    # silently merged them, producing residues with >1 CA and a crash.)
+    anchor_resindices = {top.atom(int(a)).residue.index for a in anchor_atoms}
+    if not anchor_resindices:
+        raise ValueError("No protein or nucleic-acid residues found in the "
+                         "topology; nothing for COMPASS to analyse.")
 
-    # Keep only residues that own an anchor atom (protein / nucleic).
-    group_by_index = {
-        key: idx for key, idx in group_all.items()
-        if anchor_set.intersection(idx.tolist())
-    }
-    if not group_by_index:
-        raise ValueError("No protein or nucleic-acid residues found in the topology; nothing for COMPASS to analyse.")
+    # Order residues by (chain, resSeq, segment, residue.index): identical to the
+    # previous ordering for clean structures, with residue.index as a stable
+    # tie-breaker that places colliding residues adjacently instead of merging.
+    def _sort_key(res_idx):
+        # Match the previous groupby ordering exactly for clean structures:
+        # MDTraj's dataframe "chainID" is the integer chain.index (sorted
+        # numerically), resSeq is int, segmentID is str. residue.index is only a
+        # tie-breaker, so it never reorders non-colliding residues.
+        r = top.residue(res_idx)
+        seg = getattr(r, 'segment_id', '') or ''
+        return (int(r.chain.index), int(r.resSeq), str(seg), int(res_idx))
 
-    # Create non-hydrogen version
-    group_by_index_noh = {}
-    for key, values in group_by_index.items():
-        noh = values[df.loc[values, "element"] != "H"]
-        group_by_index_noh[key] = noh
-
-    # Create babel dictionaries
-    babel_dict = {i: x for i, x in enumerate(group_by_index)}
-
-    # Transform to zero-based indices dictionaries
-    res_ind_zero = {i: group_by_index[x] for i, x in enumerate(group_by_index)}
-    res_ind_noh = {i: group_by_index_noh[x] for i, x in enumerate(group_by_index_noh)}
+    res_ind_zero = {}   # 0-based residue idx -> all atom indices
+    res_ind_noh = {}    # 0-based residue idx -> non-hydrogen atom indices
+    babel_dict = {}     # 0-based residue idx -> (resName, resSeq, chain_id, residue.index)
+    for new_i, res_idx in enumerate(sorted(anchor_resindices, key=_sort_key)):
+        residue = top.residue(res_idx)
+        res_ind_zero[new_i] = np.fromiter(
+            (a.index for a in residue.atoms), dtype=np.int64)
+        res_ind_noh[new_i] = np.fromiter(
+            (a.index for a in residue.atoms
+             if getattr(a.element, 'symbol', None) != 'H'), dtype=np.int64)
+        chain_id = residue.chain.chain_id \
+            if residue.chain.chain_id is not None else ''
+        babel_dict[new_i] = (residue.name, residue.resSeq, chain_id, res_idx)
 
     # Convert to numba dictionaries
     res_ind_numba = pydict_to_numbadict(res_ind_zero)
@@ -217,25 +225,37 @@ def get_calpha_p_indices(trajectory, atoms_to_resids, map_file, numba=True):
     """
     # Per-residue anchor atoms (protein CA / nucleic C5'), carbon-guarded and
     # identical to the set used by get_resids_indices / get_corr_indices.
-    all_atoms = _backbone_anchor_indices(trajectory)
-    n_resids = len(all_atoms)
     calphas_p_raw = get_corr_indices(trajectory, map_file)
-    # print(np.shape(calphas_p_raw),n_resids)
     # calphas[r] = the CA/C5' ATOM index of residue r, where r is the residue
-    # index used by resids_to_atoms / resids_to_noh (groupby order). We key each
-    # anchor by atoms_to_resids[anchor] instead of by its position in the sorted
-    # anchor list, so this stays aligned with resids_to_noh even if atom order
-    # and residue-enumeration order differ (non-monotonic resSeq, insertion
-    # codes, string-sorted chain IDs). The value is the atom index because it is
-    # indexed straight into frame_coords downstream; the previous code stored the
-    # residue index r itself, so frame_coords[r] read the wrong atom.
+    # index used by resids_to_atoms / resids_to_noh (groupby order). Key each
+    # anchor by atoms_to_resids[anchor] so this stays aligned with resids_to_noh
+    # even when atom order and residue-enumeration order differ (non-monotonic
+    # resSeq, string-sorted chain IDs). A single residue GROUP can own more than
+    # one anchor -- alternate locations, or distinct residues merged under one
+    # resSeq because MDTraj's dataframe carries no insertion-code column -- so
+    # keep the FIRST anchor per residue rather than assuming one anchor == one
+    # residue. The stored value is the atom index (indexed into frame_coords).
     calphas_p = {}
+    n_shared = 0
     for a in calphas_p_raw:
-        calphas_p[int(atoms_to_resids[int(a)])] = int(a)
+        r = int(atoms_to_resids[int(a)])
+        if r in calphas_p:
+            n_shared += 1
+            continue
+        calphas_p[r] = int(a)
 
-    if len(calphas_p) != n_resids:
-        raise ValueError("\nThe number of calphas + P atoms is different from"
-                         " the number of residues")
+    # Residue count = distinct residue groups owning an anchor. get_resids_indices
+    # only keeps anchor-owning groups, so calphas_p must cover 0..N-1 contiguously
+    # and its length must match len(resids_to_atoms) used everywhere else.
+    n_resids = len(calphas_p)
+    if set(calphas_p.keys()) != set(range(n_resids)):
+        raise ValueError(
+            "\nCA/C5' anchors do not map onto a contiguous 0..N-1 residue index "
+            "set; residue indexing is inconsistent.")
+    if n_shared:
+        print(f" ⚠️  {n_shared} CA/C5' anchor(s) fell on an already-seen residue "
+              f"group (alternate locations, or residues sharing a resSeq / "
+              f"insertion codes); used the first anchor per residue.")
 
     if numba:
         alphas = pydict_to_numbadict(calphas_p)
@@ -307,14 +327,18 @@ def get_sb_indices(topo_df, atoms_to_resids):
     oxy_raw1 = defaultdict(list)
     [oxy_raw1[atoms_to_resids[x]].append(x) for x in o_indices]
     oxy_raw3 = {x: np.asarray(oxy_raw1[x], dtype=np.int32) for x in oxy_raw1}
-    oxy = pydict_to_numbadict(oxy_raw3)
+    # Explicit types so the dict is valid even when EMPTY (e.g. a protein with no
+    # ASP/GLU has no salt-bridge oxygens): residue index (int64) -> int32 array.
+    oxy = pydict_to_numbadict(oxy_raw3, key_type=types.int64,
+                              value_type=types.int32[:])
 
     # Process the nitrogen indices to a numba dict
     nitro_raw1 = defaultdict(list)
     [nitro_raw1[atoms_to_resids[x]].append(x) for x in n_indices]
     nitro_raw3 = {x: np.asarray(nitro_raw1[x], dtype=np.int32) for x in
                   nitro_raw1}
-    nitro = pydict_to_numbadict(nitro_raw3)
+    nitro = pydict_to_numbadict(nitro_raw3, key_type=types.int64,
+                                value_type=types.int32[:])
     return oxy, nitro
 
 
@@ -366,19 +390,24 @@ def get_dha_indices(trajectory, heavies_elements, atoms_to_resids):
     d_raw = defaultdict(list)
     [d_raw[atoms_to_resids[x]].append(x) for x in d_raw1]
     d_raw3 = {x: np.asarray(d_raw[x], dtype=np.int32) for x in d_raw}
-    donors = pydict_to_numbadict(d_raw3)
+    # Explicit types so these stay valid even when EMPTY (e.g. a hydrogen-less
+    # topology has no D-H bonds -> no donors/hydrogens): int64 -> int32 array.
+    donors = pydict_to_numbadict(d_raw3, key_type=types.int64,
+                                 value_type=types.int32[:])
 
     # Process the indices of hydrogens to a numba dict
     h_raw = defaultdict(list)
     [h_raw[atoms_to_resids[x]].append(x) for x in h_raw1]
     h_raw3 = {x: np.asarray(h_raw[x], dtype=np.int32) for x in h_raw}
-    hydros = pydict_to_numbadict(h_raw3)
+    hydros = pydict_to_numbadict(h_raw3, key_type=types.int64,
+                                 value_type=types.int32[:])
 
     # Process the indices of acceptors to a numba dict
     a_raw = defaultdict(list)
     [a_raw[atoms_to_resids[x]].append(x) for x in a_raw1]
     a_raw3 = {x: np.asarray(a_raw[x], dtype=np.int32) for x in a_raw}
-    acceptors = pydict_to_numbadict(a_raw3)
+    acceptors = pydict_to_numbadict(a_raw3, key_type=types.int64,
+                                    value_type=types.int32[:])
     return donors, hydros, acceptors
 
 

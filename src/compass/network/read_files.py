@@ -192,8 +192,8 @@ class ReadFiles:
                     node1 = edge_info[0].strip("()")
                     node2 = edge_info[1].strip("()")
                     # Extract residue numbers and chain IDs
-                    res1, chain1 = node1.split(",")
-                    res2, chain2 = node2.split(",")
+                    res1, chain1 = node1.split(",")[:2]
+                    res2, chain2 = node2.split(",")[:2]
                     # Parse betweenness
                     betweenness = float(parts[1])
                     # Append the data to the list

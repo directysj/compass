@@ -492,7 +492,7 @@ class NetworkParameters:
                 res_name0, atom_name0, res_num0, chain_id0 = self.atom_mapping.get(
                     str(node), ("Unknown", "Unknown", "Unknown", "Unknown"))
                 f.write(
-                    f"Node ({res_num0},{chain_id0})\t{betweenness[node]:.4f}\t{closeness[node]:.4f}\t{degree[node]}\n")
+                    f"Node ({res_num0},{chain_id0},{node})\t{betweenness[node]:.4f}\t{closeness[node]:.4f}\t{degree[node]}\n")
         end_time = time.time()
 
     def calculate_edge_betweenness(self):
@@ -528,7 +528,7 @@ class NetworkParameters:
                     res_name1, atom_name1, res_num1, chain_id1 = self.atom_mapping.get(
                         str(edge[1]),
                         ("Unknown", "Unknown", "Unknown", "Unknown"))
-                    edge_str = f"({res_num0},{chain_id0})-({res_num1},{chain_id1})"
+                    edge_str = f"({res_num0},{chain_id0},{edge[0]})-({res_num1},{chain_id1},{edge[1]})"
                     f.write(f"{edge_str}\t{centrality:.4f}\n")
         end_time = time.time()
 
@@ -563,6 +563,6 @@ class NetworkParameters:
             for node in top_nodes:
                 res_name0, atom_name0, res_num0, chain_id0 = self.atom_mapping.get(
                     str(node), ("Unknown", "Unknown", "Unknown", "Unknown"))
-                f.write(f"Node ({res_num0}, {chain_id0})\n")
+                f.write(f"Node ({res_num0}, {chain_id0}, {node})\n")
 
         print(f" 📥  Top {pct_label}% nodes identified and saved as allosteric hotspots to {output_file} ")
